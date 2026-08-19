@@ -49,7 +49,11 @@ async function request<T>(path: string): Promise<T> {
 
   if (!response.ok) {
     throw new Error(
-      payload && "message" in payload && payload.message
+      payload &&
+        typeof payload === "object" &&
+        "message" in payload &&
+        typeof payload.message === "string" &&
+        payload.message
         ? payload.message
         : "Impossible de charger votre espace.",
     )
@@ -76,12 +80,15 @@ function mapBook(book: BackendBook | BackendLibraryItem): DashboardBook {
   return {
     id: Number(id),
     title:
-      nestedBook?.title ?? ("title" in book ? book.title : "Livre YéYéBook"),
+      nestedBook?.title ??
+      ("title" in book ? book.title : undefined) ??
+      "Livre YéYéBook",
     author,
     category:
       nestedBook?.category ??
       nestedBook?.category_name ??
-      ("category" in book ? book.category : "Littérature"),
+      ("category" in book ? book.category : undefined) ??
+      "Littérature",
     price: nestedBook?.price ?? nestedBook?.price_fcfa,
     slug: nestedBook?.slug,
     cover:

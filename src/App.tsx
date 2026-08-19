@@ -4,7 +4,6 @@ import {
   useEffect,
   useCallback,
   type ReactNode,
-  type SyntheticEvent,
 } from "react"
 import {
   Avatar,
@@ -30,6 +29,16 @@ import { getPreviewSession } from "@/features/auth/auth.session"
 import type { AuthApiResponse, AuthUser } from "@/features/auth/types"
 import { DashboardPage } from "@/features/dashboard/pages/DashboardPage"
 import type { DashboardBook } from "@/features/dashboard/types"
+import { CatalogPage } from "@/features/catalog/pages/CatalogPage"
+import {
+  buildChapters,
+  PREVIEW_BOOKS,
+} from "@/features/catalog/catalog.preview"
+import { CATALOG_CATEGORIES } from "@/features/catalog/catalog.constants"
+import { formatPrice, handleCoverError } from "@/features/catalog/catalog.utils"
+import { BookCard } from "@/features/catalog/components/BookCard"
+import { RatingStars } from "@/features/catalog/components/RatingStars"
+import type { Book } from "@/features/catalog/types"
 import {
   ShoppingBag,
   ChevronLeft,
@@ -66,283 +75,11 @@ import {
   Sparkles,
 } from "lucide-react"
 
-type Chapter = { title: string content: string[] }
-type Book = {
-  id: number
-  title: string
-  author: string
-  price: number
-  category: string
-  rating: number
-  reviews: number
-  pages: number
-  year: number
-  cover: string
-  description: string
-  chapters: Chapter[]
-  published?: boolean
-}
-
-/**
- * Builds a readable set of chapters for a title. The text is contextual
- * (woven from the work's own description and themes) so the in-app reader
- * shows real, coherent French prose rather than filler.
- */
-function buildChapters(
-  title: string,
-  author: string,
-  description: string,
-  themes: string[],
-): Chapter[] {
-  const p = (t: string) => t
-  const titles = [
-    "Ouverture",
-    "Les racines",
-    "Le seuil",
-    "La traversée",
-    "Le retour",
-    "Épilogue",
-  ]
-  return titles.map((chapTitle, i) => ({
-    title: chapTitle,
-    content: [
-      p(
-        `${chapTitle}. Dès les premières lignes de « ${title} », ${author} installe une voix qui ne ressemble à aucune autre. ${description}`,
-      ),
-      p(
-        `Le récit avance à son rythme, porté par ${themes[i % themes.length]} et par une langue qui pèse chaque mot. On sent, page après page, la mémoire d'un continent qui parle à travers celui qui écrit — sans jamais céder à la facilité ni à la nostalgie.`,
-      ),
-      p(
-        `Ici, ${themes[(i + 1) % themes.length]} traverse la scène comme un fil tendu entre le passé et ce qui vient. Les personnages hésitent, choisissent, se trompent, recommencent ; et c'est dans cette hésitation même que le texte trouve sa vérité la plus nue.`,
-      ),
-      p(
-        `À la fin de ce chapitre, rien n'est encore résolu, et pourtant tout a changé. ${author} referme la porte doucement, laissant au lecteur le soin de deviner ce qui, déjà, se prépare de l'autre côté.`,
-      ),
-    ],
-  }))
-}
-
-const SEED_BOOKS: Book[] = [
-  {
-    id: 1,
-    title: "L'Enfant noir",
-    author: "Camara Laye",
-    price: 2500,
-    category: "Roman",
-    rating: 4.8,
-    reviews: 342,
-    pages: 224,
-    year: 1953,
-    cover:
-      "https://images.unsplash.com/photo-1544947950-fa07a98d237f?w=800&h=1200&fit=crop&auto=format",
-    description:
-      "Une œuvre autobiographique majeure qui retrace l'enfance de l'auteur en Haute-Guinée. Un témoignage poignant sur les traditions, la culture mandingue et le passage à l'âge adulte dans l'Afrique pré-coloniale.",
-    chapters: buildChapters(
-      "L'Enfant noir",
-      "Camara Laye",
-      "Une œuvre autobiographique qui retrace l'enfance de l'auteur en Haute-Guinée, entre l'atelier du père forgeron et les champs de la saison des pluies.",
-      [
-        "la magie de l'atelier paternel",
-        "les récoltes partagées du village",
-        "la peur et l'émerveillement de l'enfance",
-        "l'appel lointain de l'école",
-      ],
-    ),
-  },
-  {
-    id: 2,
-    title: "Le Soleil des Indépendances",
-    author: "Ahmadou Kourouma",
-    price: 3000,
-    category: "Roman",
-    rating: 4.9,
-    reviews: 518,
-    pages: 208,
-    year: 1968,
-    cover:
-      "https://images.unsplash.com/photo-1589998059171-988d887df646?w=800&h=1200&fit=crop&auto=format",
-    description:
-      "Un chef-d'œuvre de la littérature africaine francophone qui dresse le portrait sans concession des désillusions ayant suivi les indépendances, à travers le destin tragique de Fama, prince déchu.",
-    chapters: buildChapters(
-      "Le Soleil des Indépendances",
-      "Ahmadou Kourouma",
-      "Le portrait sans concession des désillusions qui ont suivi les indépendances, à travers le destin de Fama, prince déchu réduit à courir les funérailles.",
-      [
-        "la déchéance d'un prince",
-        "l'ironie mordante du griot",
-        "les promesses trahies de la nation",
-        "la dignité têtue des vaincus",
-      ],
-    ),
-  },
-  {
-    id: 3,
-    title: "Soundjata, l'épopée mandingue",
-    author: "Djibril Tamsir Niane",
-    price: 2000,
-    category: "Histoire",
-    rating: 4.7,
-    reviews: 196,
-    pages: 160,
-    year: 1960,
-    cover:
-      "https://images.unsplash.com/photo-1532012197267-da84d127e765?w=800&h=1200&fit=crop&auto=format",
-    description:
-      "La transcription fidèle de la tradition orale relatant l'histoire de Soundjata Keïta, fondateur de l'Empire du Mali au XIIIᵉ siècle. Un texte fondamental pour comprendre l'Afrique de l'Ouest.",
-    chapters: buildChapters(
-      "Soundjata, l'épopée mandingue",
-      "Djibril Tamsir Niane",
-      "La transcription de la tradition orale relatant l'ascension de Soundjata Keïta, l'enfant qui ne marchait pas et devint fondateur de l'Empire du Mali.",
-      [
-        "la parole du griot dépositaire",
-        "l'enfant qui se dresse enfin",
-        "l'exil et l'alliance des peuples",
-        "la victoire de Kirina",
-      ],
-    ),
-  },
-  {
-    id: 4,
-    title: "Une si longue lettre",
-    author: "Mariama Bâ",
-    price: 2500,
-    category: "Roman",
-    rating: 5.0,
-    reviews: 623,
-    pages: 165,
-    year: 1979,
-    cover:
-      "https://images.unsplash.com/photo-1476275466078-4007374efac4?w=800&h=1200&fit=crop&auto=format",
-    description:
-      "Sous forme épistolaire, Ramatoulaye, fraîchement veuve, se confie à sa meilleure amie Aïssatou. Une réflexion profonde et lumineuse sur la condition féminine, le mariage et la polygamie au Sénégal.",
-    chapters: buildChapters(
-      "Une si longue lettre",
-      "Mariama Bâ",
-      "Sous forme de lettre, Ramatoulaye, fraîchement veuve, se confie à son amie Aïssatou et médite sur l'amour, la trahison et la liberté des femmes.",
-      [
-        "le deuil et ses rituels",
-        "l'amitié comme refuge",
-        "la blessure de la polygamie",
-        "l'espoir d'un recommencement",
-      ],
-    ),
-  },
-  {
-    id: 5,
-    title: "Les Bouts de bois de Dieu",
-    author: "Ousmane Sembène",
-    price: 3200,
-    category: "Roman",
-    rating: 4.6,
-    reviews: 271,
-    pages: 384,
-    year: 1960,
-    cover:
-      "https://images.unsplash.com/photo-1495446815901-a7297e633e8d?w=800&h=1200&fit=crop&auto=format",
-    description:
-      "Le récit épique de la grève des cheminots du Dakar-Niger en 1947. Une fresque sociale puissante où hommes et femmes s'unissent pour la dignité et la justice.",
-    chapters: buildChapters(
-      "Les Bouts de bois de Dieu",
-      "Ousmane Sembène",
-      "Le récit épique de la grève des cheminots du Dakar-Niger en 1947, où hommes et femmes s'unissent pour la dignité et la justice.",
-      [
-        "l'arrêt des locomotives",
-        "la faim et la solidarité",
-        "l'éveil des femmes",
-        "la longue marche vers Dakar",
-      ],
-    ),
-  },
-  {
-    id: 6,
-    title: "Cahier d'un retour au pays natal",
-    author: "Aimé Césaire",
-    price: 2800,
-    category: "Poésie",
-    rating: 4.9,
-    reviews: 158,
-    pages: 96,
-    year: 1939,
-    cover:
-      "https://images.unsplash.com/photo-1519682337058-a94d519337bc?w=800&h=1200&fit=crop&auto=format",
-    description:
-      "Poème fondateur de la négritude, incandescent et incantatoire. Un chant de révolte et de réappropriation identitaire qui a marqué à jamais la littérature francophone.",
-    chapters: buildChapters(
-      "Cahier d'un retour au pays natal",
-      "Aimé Césaire",
-      "Poème fondateur de la négritude, incandescent et incantatoire, chant de révolte et de réappropriation identitaire.",
-      [
-        "l'aube blessée des Antilles",
-        "la descente au plus bas de la douleur",
-        "le sursaut de la parole",
-        "l'élan debout de la négritude",
-      ],
-    ),
-  },
-  {
-    id: 7,
-    title: "L'Aventure ambiguë",
-    author: "Cheikh Hamidou Kane",
-    price: 2700,
-    category: "Roman",
-    rating: 4.8,
-    reviews: 289,
-    pages: 190,
-    year: 1961,
-    cover:
-      "https://images.unsplash.com/photo-1524578271613-d550eacf6090?w=800&h=1200&fit=crop&auto=format",
-    description:
-      "Samba Diallo, tiraillé entre l'école coranique et l'école occidentale, incarne le déchirement d'une génération. Un roman philosophique d'une rare intensité méditative.",
-    chapters: buildChapters(
-      "L'Aventure ambiguë",
-      "Cheikh Hamidou Kane",
-      "Samba Diallo, tiraillé entre l'école coranique et l'école occidentale, incarne le déchirement méditatif d'une génération.",
-      [
-        "le feu de la parole sacrée",
-        "le départ vers l'ailleurs",
-        "le vertige de la raison",
-        "le retour impossible",
-      ],
-    ),
-  },
-  {
-    id: 8,
-    title: "Contes et légendes d'Afrique",
-    author: "Birago Diop",
-    price: 1800,
-    category: "Contes",
-    rating: 4.7,
-    reviews: 204,
-    pages: 176,
-    year: 1947,
-    cover:
-      "https://images.unsplash.com/photo-1512820790803-83ca734da794?w=800&h=1200&fit=crop&auto=format",
-    description:
-      "Les récits du griot Amadou Koumba, entre sagesse et malice. Une collection intemporelle qui fait résonner la voix des veillées et la mémoire des ancêtres.",
-    chapters: buildChapters(
-      "Contes et légendes d'Afrique",
-      "Birago Diop",
-      "Les récits du griot Amadou Koumba, entre sagesse et malice, qui font résonner la voix des veillées et la mémoire des ancêtres.",
-      [
-        "la ruse du lièvre Leuk",
-        "la leçon de l'os",
-        "les souffles des ancêtres",
-        "la morale au coin du feu",
-      ],
-    ),
-  },
-]
-
-const CATEGORIES = ["Tous", "Roman", "Histoire", "Poésie", "Contes"]
-const SORTS = [
-  { id: "popular", label: "Populaires" },
-  { id: "rating", label: "Mieux notés" },
-  { id: "price-asc", label: "Prix croissant" },
-  { id: "price-desc", label: "Prix décroissant" },
-]
-
 type View = "home" | "catalog" | "details" | "checkout" | "confirmation" | "library" | "reader" | "admin" | "login" | "register" | "dashboard"
-type CartItem = { bookId: number quantity: number }
+type CartItem = {
+  bookId: number
+  quantity: number
+}
 type ToastState = {
   message: string
   variant: "default" | "success" | "error" | "warning"
@@ -359,7 +96,33 @@ type Order = {
   date: string
   status: OrderStatus
 }
-type CheckoutDetails = { name: string phone: string provider: string }
+type CheckoutDetails = {
+  name: string
+  phone: string
+  provider: string
+}
+
+type NavLink = {
+  label: string
+  view: View
+}
+type ReaderTone = {
+  ink: string
+  sub: string
+}
+type OrderStatusMeta = {
+  label: string
+  className: string
+}
+type SalesBucket = {
+  label: string
+  value: number
+}
+type AdminNavItem = {
+  id: AdminTab
+  label: string
+  icon: ReactNode
+}
 
 const PROVIDER_LABELS: Record<string, string> = {
   orange: "Orange Money",
@@ -443,8 +206,6 @@ const SEED_ORDERS: Order[] = [
 
 const PROGRESS_KEY = "ybook-reading-progress"
 
-const formatPrice = (price: number) => `${price.toLocaleString("fr-FR")} FCFA`
-
 function loadProgress(): Progress {
   try {
     const raw = localStorage.getItem(PROGRESS_KEY)
@@ -454,115 +215,23 @@ function loadProgress(): Progress {
   }
 }
 
-function Stars({ rating }: { rating: number }) {
-  return (
-    <span className="inline-flex items-center gap-xs text-brand-primary">
-      <Star
-        className="w-4 h-4 fill-current"
-        strokeWidth={0}
-        aria-hidden="true"
-      />
-      <span className="text-label-sm font-semibold text-text-primary">
-        {rating.toFixed(1)}
-        <span className="sr-only"> sur 5</span>
-      </span>
-    </span>
-  )
-}
-
-/** Neutral editorial cover shown if a book's image ever fails to load, so no
- *  title is left with an empty frame. */
-const FALLBACK_COVER =
-  "https://images.unsplash.com/photo-1544947950-fa07a98d237f?w=800&h=1200&fit=crop&auto=format"
-
-function handleCoverError(e: SyntheticEvent<HTMLImageElement>) {
-  const img = e.currentTarget
-  if (img.src !== FALLBACK_COVER) img.src = FALLBACK_COVER
-}
-
-function BookCard({
-  book,
-  onOpen,
-  onAdd,
-}: {
-  book: Book
-  onOpen: () => void
-  onAdd: () => void
-}) {
-  return (
-    <div className="group flex flex-col gap-lg">
-      <button
-        onClick={onOpen}
-        aria-label={`Voir la fiche de « ${book.title} » par ${book.author}`}
-        className="relative w-full aspect-[2/3] rounded-corner-lg overflow-hidden bg-brand-tertiary border border-border-secondary shadow-sm transition-all duration-300 ease-out group-hover:shadow-xl group-hover:-translate-y-1 cursor-pointer text-left"
-      >
-        <img
-          src={book.cover}
-          alt=""
-          onError={handleCoverError}
-          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.04]"
-        />
-        <div className="absolute inset-0 bg-[#100908]/45 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-        <div className="absolute top-md left-md">
-          <Badge variant="secondary" label={book.category} />
-        </div>
-        <div className="absolute inset-x-md bottom-md translate-y-2 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300">
-          <span className="inline-flex items-center gap-xs text-video-title font-semibold text-white bg-[#100908]/70 backdrop-blur-sm rounded-corner-full px-md py-xs">
-            Voir le livre <ArrowRight className="w-3 h-3" aria-hidden="true" />
-          </span>
-        </div>
-      </button>
-      <div className="flex flex-col gap-xs">
-        <button
-          onClick={onOpen}
-          className="text-label font-semibold text-text-primary line-clamp-1 text-left hover:text-brand-primary transition-colors cursor-pointer"
-        >
-          {book.title}
-        </button>
-        <p className="text-label-sm text-text-secondary">{book.author}</p>
-        <div className="flex items-center justify-between mt-xs">
-          <span className="text-label font-semibold text-text-primary">
-            {formatPrice(book.price)}
-          </span>
-          <button
-            onClick={onAdd}
-            aria-label={`Ajouter « ${book.title} » au panier`}
-            className="inline-flex items-center justify-center w-9 h-9 rounded-corner-full border border-border-primary text-brand-primary hover:bg-brand-primary hover:text-on-brand hover:border-brand-primary transition-all cursor-pointer"
-          >
-            <Plus className="w-4 h-4" aria-hidden="true" />
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 export default function App() {
   const [view, setView] = useState<View>("home")
   const [sessionUser, setSessionUser] = useState<AuthUser | null>(() =>
     getPreviewSession(),
   )
   const [sessionChecked, setSessionChecked] = useState(false)
-  const [books, setBooks] = useState<Book[]>(SEED_BOOKS)
+  const [books, setBooks] = useState<Book[]>(PREVIEW_BOOKS)
   const [orders, setOrders] = useState<Order[]>(SEED_ORDERS)
   const [selectedBookId, setSelectedBookId] = useState<number | null>(null)
   const [cartItems, setCartItems] = useState<CartItem[]>([])
   const [library, setLibrary] = useState<number[]>([])
   const [searchQuery, setSearchQuery] = useState("")
   const [activeCategory, setActiveCategory] = useState("Tous")
-  const [sort, setSort] = useState("popular")
   const [cartOpen, setCartOpen] = useState(false)
   const [toast, setToast] = useState<ToastState>(null)
 
-  // Catalogue — filter sidebar + layout (mirrors the maquette)
-  const [catFilters, setCatFilters] = useState<string[]>([])
-  const [priceMin, setPriceMin] = useState("")
-  const [priceMax, setPriceMax] = useState("")
-  const [minRating, setMinRating] = useState(0)
-  const [gridView, setGridView] = useState(true)
   const [libGrid, setLibGrid] = useState(true)
-  const [page, setPage] = useState(1)
-  const PER_PAGE = 6
 
   // Fiche produit — active tab + wishlist
   const [productTab, setProductTab] =
@@ -667,7 +336,7 @@ export default function App() {
   }
 
   const openCatalog = (category?: string) => {
-    if (category) setActiveCategory(category)
+    setActiveCategory(category ?? "Tous")
     setView("catalog")
   }
 
@@ -799,81 +468,6 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: "smooth" })
   }
 
-  const filteredBooks = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase()
-    const min = priceMin ? Number(priceMin) : 0
-    const max = priceMax ? Number(priceMax) : Infinity
-    let list = books.filter((b) => {
-      if (b.published === false) return false
-      const cats =
-        catFilters.length > 0
-          ? catFilters
-          : activeCategory === "Tous"
-            ? []
-            : [activeCategory]
-      const matchCat = cats.length === 0 || cats.includes(b.category)
-      const matchQ =
-        !q ||
-        b.title.toLowerCase().includes(q) ||
-        b.author.toLowerCase().includes(q)
-      const matchPrice = b.price >= min && b.price <= max
-      const matchRating = b.rating >= minRating
-      return matchCat && matchQ && matchPrice && matchRating
-    })
-    switch (sort) {
-      case "rating":
-        list = [...list].sort((a, b) => b.rating - a.rating)
-        break
-      case "price-asc":
-        list = [...list].sort((a, b) => a.price - b.price)
-        break
-      case "price-desc":
-        list = [...list].sort((a, b) => b.price - a.price)
-        break
-      default:
-        list = [...list].sort((a, b) => b.reviews - a.reviews)
-    }
-    return list
-  }, [
-    books,
-    searchQuery,
-    activeCategory,
-    catFilters,
-    priceMin,
-    priceMax,
-    minRating,
-    sort,
-  ])
-
-  const pageCount = Math.max(1, Math.ceil(filteredBooks.length / PER_PAGE))
-  const pagedBooks = filteredBooks.slice((page - 1) * PER_PAGE, page * PER_PAGE)
-
-  // Reset pagination whenever the result set changes
-  useEffect(() => {
-    setPage(1)
-  }, [
-    searchQuery,
-    activeCategory,
-    catFilters,
-    priceMin,
-    priceMax,
-    minRating,
-    sort,
-  ])
-
-  const resetFilters = () => {
-    setCatFilters([])
-    setPriceMin("")
-    setPriceMax("")
-    setMinRating(0)
-    setActiveCategory("Tous")
-    setSearchQuery("")
-  }
-  const toggleCatFilter = (cat: string) =>
-    setCatFilters((prev) =>
-      prev.includes(cat) ? prev.filter((c) => c !== cat) : [...prev, cat],
-    )
-
   const visibleBooks = books.filter((b) => b.published !== false)
   const featured = visibleBooks[1] ?? visibleBooks[0]
   const heroCovers = visibleBooks.slice(0, 3)
@@ -892,7 +486,7 @@ export default function App() {
   const libraryBooks = books.filter((b) => library.includes(b.id))
   const ownsSelected = selectedBook ? library.includes(selectedBook.id) : false
 
-  const navLinks: { label: string view: View }[] = [
+  const navLinks: NavLink[] = [
     { label: "Accueil", view: "home" },
     { label: "Catalogue", view: "catalog" },
     { label: "Ma bibliothèque", view: "library" },
@@ -1442,7 +1036,9 @@ export default function App() {
               return (
                 <button
                   key={link.label}
-                  onClick={() => go(link.view)}
+                  onClick={() =>
+                    link.view === "catalog" ? openCatalog() : go(link.view)
+                  }
                   aria-current={active ? "page" : undefined}
                   className={`px-lg py-sm rounded-corner-full text-label-sm font-medium transition-colors cursor-pointer ${
                     active
@@ -1721,7 +1317,7 @@ export default function App() {
                 Catégories populaires
               </h2>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-lg">
-                {CATEGORIES.filter((c) => c !== "Tous").map((cat) => {
+                {CATALOG_CATEGORIES.map(({ value: cat }) => {
                   const count = visibleBooks.filter(
                     (b) => b.category === cat,
                   ).length
@@ -1824,334 +1420,17 @@ export default function App() {
 
         {/* ---------------------------------------------------------------- CATALOG */}
         {view === "catalog" && (
-          <div className="max-w-[1320px] mx-auto px-xl md:px-2xl py-3xl flex flex-col md:flex-row gap-2xl animate-fade">
-            {/* Sidebar filtres */}
-            <aside className="w-full md:w-64 shrink-0">
-              <div className="rounded-corner-lg bg-surface-bg border border-border-secondary p-xl md:sticky md:top-[96px] flex flex-col gap-2xl">
-                <div className="flex items-center justify-between">
-                  <h2 className="font-semibold text-text-primary">Filtres</h2>
-                  <button
-                    onClick={resetFilters}
-                    className="text-video-title text-brand-primary hover:underline cursor-pointer"
-                  >
-                    Réinitialiser
-                  </button>
-                </div>
-
-                <fieldset className="flex flex-col gap-md">
-                  <legend className="text-label-sm font-semibold text-text-primary mb-sm">
-                    Catégories
-                  </legend>
-                  {CATEGORIES.filter((c) => c !== "Tous").map((cat) => {
-                    const count = visibleBooks.filter(
-                      (b) => b.category === cat,
-                    ).length
-                    return (
-                      <label
-                        key={cat}
-                        className="flex items-center gap-md text-label-sm text-text-secondary cursor-pointer"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={catFilters.includes(cat)}
-                          onChange={() => toggleCatFilter(cat)}
-                          className="w-4 h-4 rounded-corner-sm accent-[#e04070]"
-                        />
-                        {cat}{" "}
-                        <span className="text-text-tertiary text-video-title">
-                          ({count})
-                        </span>
-                      </label>
-                    )
-                  })}
-                </fieldset>
-
-                <div className="flex flex-col gap-md">
-                  <h3 className="text-label-sm font-semibold text-text-primary">
-                    Prix (FCFA)
-                  </h3>
-                  <div className="flex items-center gap-sm">
-                    <input
-                      type="number"
-                      inputMode="numeric"
-                      placeholder="Min"
-                      value={priceMin}
-                      onChange={(e) => setPriceMin(e.target.value)}
-                      aria-label="Prix minimum"
-                      className="w-full px-md py-sm border border-border-secondary rounded-corner-md text-label-sm bg-surface-bg"
-                    />
-                    <span className="text-text-tertiary">–</span>
-                    <input
-                      type="number"
-                      inputMode="numeric"
-                      placeholder="Max"
-                      value={priceMax}
-                      onChange={(e) => setPriceMax(e.target.value)}
-                      aria-label="Prix maximum"
-                      className="w-full px-md py-sm border border-border-secondary rounded-corner-md text-label-sm bg-surface-bg"
-                    />
-                  </div>
-                </div>
-
-                <fieldset className="flex flex-col gap-sm">
-                  <legend className="text-label-sm font-semibold text-text-primary mb-sm">
-                    Note
-                  </legend>
-                  {[5, 4, 3].map((r) => (
-                    <label
-                      key={r}
-                      className="flex items-center gap-md text-label-sm cursor-pointer"
-                    >
-                      <input
-                        type="radio"
-                        name="rating"
-                        checked={minRating === r}
-                        onChange={() => setMinRating(r)}
-                        className="w-4 h-4 accent-[#e04070]"
-                      />
-                      <span
-                        className="inline-flex items-center gap-0.5"
-                        aria-label={`${r} étoiles et plus`}
-                      >
-                        {Array.from({ length: 5 }).map((_, s) => (
-                          <Star
-                            key={s}
-                            className={`w-3.5 h-3.5 ${
-                              s < r
-                                ? "fill-current text-brand-primary"
-                                : "fill-current text-black/12"
-                            }`}
-                            strokeWidth={0}
-                            aria-hidden="true"
-                          />
-                        ))}
-                      </span>
-                      <span className="text-text-tertiary text-video-title">
-                        & plus
-                      </span>
-                    </label>
-                  ))}
-                </fieldset>
-
-                <div className="flex flex-col gap-md">
-                  <h3 className="text-label-sm font-semibold text-text-primary">
-                    Langue
-                  </h3>
-                  <select
-                    className="w-full px-md py-sm border border-border-secondary rounded-corner-md text-label-sm bg-surface-bg"
-                    aria-label="Langue"
-                  >
-                    <option>Toutes les langues</option>
-                    <option>Français</option>
-                    <option>Anglais</option>
-                  </select>
-                </div>
-              </div>
-            </aside>
-
-            {/* Contenu */}
-            <div className="flex-1 flex flex-col gap-lg">
-              {/* Search + sort + view toggle */}
-              <div className="rounded-corner-lg bg-surface-bg border border-border-secondary p-lg flex flex-col md:flex-row gap-lg md:items-center md:justify-between">
-                <div className="w-full md:max-w-md">
-                  <SearchComponent
-                    placeholder="Rechercher un titre, un auteur…"
-                    value={searchQuery}
-                    onChange={setSearchQuery}
-                  />
-                </div>
-                <div className="flex items-center gap-md">
-                  <span className="text-label-sm text-text-tertiary whitespace-nowrap">
-                    {filteredBooks.length} résultats
-                  </span>
-                  <select
-                    value={sort}
-                    onChange={(e) => setSort(e.target.value)}
-                    aria-label="Trier"
-                    className="px-md py-sm border border-border-secondary rounded-corner-md text-label-sm bg-surface-bg"
-                  >
-                    {SORTS.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.label}
-                      </option>
-                    ))}
-                  </select>
-                  <div
-                    className="flex border border-border-secondary rounded-corner-md overflow-hidden"
-                    role="group"
-                    aria-label="Affichage"
-                  >
-                    <button
-                      onClick={() => setGridView(true)}
-                      aria-pressed={gridView}
-                      className={`p-sm cursor-pointer ${
-                        gridView
-                          ? "bg-brand-primary text-on-brand"
-                          : "bg-surface-bg text-text-tertiary hover:bg-surface-hover"
-                      }`}
-                      aria-label="Vue grille"
-                    >
-                      <LayoutGrid className="w-4 h-4" aria-hidden="true" />
-                    </button>
-                    <button
-                      onClick={() => setGridView(false)}
-                      aria-pressed={!gridView}
-                      className={`p-sm cursor-pointer ${
-                        !gridView
-                          ? "bg-brand-primary text-on-brand"
-                          : "bg-surface-bg text-text-tertiary hover:bg-surface-hover"
-                      }`}
-                      aria-label="Vue liste"
-                    >
-                      <List className="w-4 h-4" aria-hidden="true" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Breadcrumbs */}
-              <nav
-                className="flex items-center gap-sm text-label-sm text-text-tertiary"
-                aria-label="Fil d'ariane"
-              >
-                <button
-                  onClick={() => go("home")}
-                  className="hover:text-text-primary cursor-pointer"
-                >
-                  Accueil
-                </button>
-                <span aria-hidden="true">/</span>
-                <span className="text-text-primary font-medium">Catalogue</span>
-                {(catFilters.length > 0 || searchQuery) && (
-                  <>
-                    <span aria-hidden="true">/</span>
-                    <span className="text-text-primary font-medium">
-                      {searchQuery
-                        ? `« ${searchQuery} »`
-                        : catFilters.join(", ")}
-                    </span>
-                  </>
-                )}
-              </nav>
-
-              {filteredBooks.length === 0 ? (
-                <div className="flex flex-col items-center justify-center gap-lg py-5xl text-center">
-                  <BookOpen
-                    className="w-10 h-10 text-text-tertiary"
-                    aria-hidden="true"
-                  />
-                  <h2 className="text-heading text-text-primary">
-                    Aucun résultat
-                  </h2>
-                  <p className="text-label-sm text-text-secondary">
-                    Essayez d'autres filtres ou un autre mot-clé.
-                  </p>
-                  <Button variant="neutral" onClick={resetFilters}>
-                    Réinitialiser les filtres
-                  </Button>
-                </div>
-              ) : gridView ? (
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-2xl">
-                  {pagedBooks.map((book) => (
-                    <BookCard
-                      key={book.id}
-                      book={book}
-                      onOpen={() => openBook(book.id)}
-                      onAdd={() => addToCart(book.id)}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <ul className="flex flex-col gap-lg">
-                  {pagedBooks.map((book) => (
-                    <li key={book.id}>
-                      <div className="flex gap-lg p-lg rounded-corner-lg bg-surface-bg border border-border-secondary hover:shadow-md transition-shadow">
-                        <button
-                          onClick={() => openBook(book.id)}
-                          className="w-20 aspect-[2/3] rounded-corner-md overflow-hidden bg-brand-tertiary shrink-0 cursor-pointer"
-                        >
-                          <img
-                            src={book.cover}
-                            alt=""
-                            onError={handleCoverError}
-                            className="w-full h-full object-cover"
-                          />
-                        </button>
-                        <div className="flex-1 min-w-0 flex flex-col gap-xs">
-                          <button
-                            onClick={() => openBook(book.id)}
-                            className="text-label font-semibold text-text-primary text-left hover:text-brand-primary cursor-pointer"
-                          >
-                            {book.title}
-                          </button>
-                          <p className="text-label-sm text-text-secondary">
-                            {book.author} • {book.category}
-                          </p>
-                          <Stars rating={book.rating} />
-                          <p className="text-label-sm text-text-secondary line-clamp-2 mt-xs">
-                            {book.description}
-                          </p>
-                        </div>
-                        <div className="flex flex-col items-end justify-between shrink-0">
-                          <span className="text-label font-semibold text-text-primary">
-                            {formatPrice(book.price)}
-                          </span>
-                          <Button
-                            variant="primary"
-                            iconStart={<Plus className="w-4 h-4" />}
-                            onClick={() => addToCart(book.id)}
-                          >
-                            Ajouter
-                          </Button>
-                        </div>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-
-              {/* Pagination */}
-              {pageCount > 1 && (
-                <nav
-                  className="flex justify-center mt-lg"
-                  aria-label="Pagination"
-                >
-                  <div className="flex gap-sm">
-                    <button
-                      onClick={() => setPage((p) => Math.max(1, p - 1))}
-                      disabled={page === 1}
-                      className="px-lg py-sm border border-border-secondary rounded-corner-md text-label-sm text-text-secondary hover:bg-surface-hover disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-                    >
-                      Précédent
-                    </button>
-                    {Array.from({ length: pageCount }, (_, i) => i + 1).map(
-                      (n) => (
-                        <button
-                          key={n}
-                          onClick={() => setPage(n)}
-                          aria-current={page === n ? "page" : undefined}
-                          className={`px-lg py-sm rounded-corner-md text-label-sm cursor-pointer ${
-                            page === n
-                              ? "bg-brand-primary text-on-brand font-medium"
-                              : "border border-border-secondary text-text-secondary hover:bg-surface-hover"
-                          }`}
-                        >
-                          {n}
-                        </button>
-                      ),
-                    )}
-                    <button
-                      onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
-                      disabled={page === pageCount}
-                      className="px-lg py-sm border border-border-secondary rounded-corner-md text-label-sm text-text-secondary hover:bg-surface-hover disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-                    >
-                      Suivant
-                    </button>
-                  </div>
-                </nav>
-              )}
-            </div>
-          </div>
+          <CatalogPage
+            books={books}
+            initialCategory={
+              activeCategory === "Tous" ? undefined : activeCategory
+            }
+            initialSearch={searchQuery}
+            onHome={() => go("home")}
+            onSearchChange={setSearchQuery}
+            onOpenBook={(book) => openBook(book.id)}
+            onAddToCart={(book) => addToCart(book.id)}
+          />
         )}
 
         {/* ---------------------------------------------------------------- DETAILS */}
@@ -2231,7 +1510,7 @@ export default function App() {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-lg text-label-sm text-text-secondary">
-                  <Stars rating={selectedBook.rating} />
+                  <RatingStars rating={selectedBook.rating} />
                   <span className="text-border-primary" aria-hidden="true">
                     |
                   </span>
@@ -3160,7 +2439,7 @@ function ChapterList({
   current: number
   onSelect: (i: number) => void
   bookmarks?: number[]
-  tone?: { ink: string sub: string }
+  tone?: ReaderTone
 }) {
   return (
     <nav aria-label="Chapitres" className="flex flex-col gap-xs">
@@ -3504,7 +2783,7 @@ function CheckoutView({
 
 type AdminTab = "dashboard" | "catalog" | "orders"
 
-const ORDER_STATUS: Record<OrderStatus, { label: string className: string }> = {
+const ORDER_STATUS: Record<OrderStatus, OrderStatusMeta> = {
   paid: { label: "Payée", className: "bg-brand-tertiary text-brand-primary" },
   pending: { label: "En attente", className: "bg-[#c8956a]/16 text-[#7a5626]" },
   refunded: {
@@ -3602,7 +2881,7 @@ function AdminView({
   // Monthly revenue for the bar chart — last 6 months, from paid/pending orders.
   const monthlySales = useMemo(() => {
     const now = new Date()
-    const buckets: { label: string value: number }[] = []
+    const buckets: SalesBucket[] = []
     for (let i = 5; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
       buckets.push({
@@ -3650,7 +2929,7 @@ function AdminView({
       .map((c) => ({ ...c, pct: Math.round((c.value / total) * 100) }))
   }, [books, orders])
 
-  const navItems: { id: AdminTab label: string icon: ReactNode }[] = [
+  const navItems: AdminNavItem[] = [
     {
       id: "dashboard",
       label: "Tableau de bord",
@@ -4326,7 +3605,7 @@ function BookForm({
   })
   const set = (k: keyof typeof form, v: string) =>
     setForm((f) => ({ ...f, [k]: v }))
-  const categories = CATEGORIES.filter((c) => c !== "Tous")
+  const categories = CATALOG_CATEGORIES.map(({ value }) => value)
   const valid =
     form.title.trim() && form.author.trim() && Number(form.price) > 0
 

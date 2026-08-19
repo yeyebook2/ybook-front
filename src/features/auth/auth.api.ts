@@ -46,7 +46,11 @@ async function request<T>(path: string, init: RequestInit): Promise<T> {
 
   if (!response.ok) {
     throw new Error(
-      payload && "message" in payload && payload.message
+      payload &&
+        typeof payload === "object" &&
+        "message" in payload &&
+        typeof payload.message === "string" &&
+        payload.message
         ? payload.message
         : "Une erreur est survenue. Réessayez.",
     )
