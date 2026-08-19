@@ -5,10 +5,10 @@ import { FormField } from "./FormField"
 import { PasswordField } from "./PasswordField"
 import { login } from "../auth.api"
 import { hasFieldErrors, validateLogin } from "../auth.validation"
-import type { FieldErrors, LoginFormValues } from "../types"
+import type { AuthApiResponse, FieldErrors, LoginFormValues } from "../types"
 
 type LoginFormProps = {
-  onSuccess: (message: string) => void
+  onSuccess: (response: AuthApiResponse) => void
   onError: (message: string) => void
   onForgotPassword: () => void
 }
@@ -45,7 +45,7 @@ export function LoginForm({
     try {
       const response = await login(values)
       if (response.ok) {
-        onSuccess(response.message)
+        onSuccess(response)
       } else {
         onError(response.message)
       }

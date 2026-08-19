@@ -19,6 +19,11 @@ import faviconPng from "@/imports/ybook-favicon-180x180.png"
 import { Wordmark } from "@/components/brand/Wordmark"
 import { LoginPage } from "@/features/auth/pages/LoginPage"
 import { RegisterPage } from "@/features/auth/pages/RegisterPage"
+import { AuthGuard } from "@/features/auth/components/AuthGuard"
+import { getCurrentUser, logout } from "@/features/auth/auth.api"
+import { getPreviewSession } from "@/features/auth/auth.session"
+import type { AuthApiResponse, AuthUser } from "@/features/auth/types"
+import { DashboardPage } from "@/features/dashboard/pages/DashboardPage"
 import {
   ShoppingBag,
   ChevronLeft,
@@ -330,7 +335,7 @@ const SORTS = [
   { id: "price-desc", label: "Prix décroissant" },
 ]
 
-type View = "home" | "catalog" | "details" | "checkout" | "confirmation" | "library" | "reader" | "admin" | "login" | "register"
+type View = "home" | "catalog" | "details" | "checkout" | "confirmation" | "library" | "reader" | "admin" | "login" | "register" | "dashboard"
 type CartItem = { bookId: number quantity: number }
 type ToastState = {
   message: string
@@ -528,6 +533,10 @@ function BookCard({
 
 export default function App() {
   const [view, setView] = useState<View>("home")
+  const [sessionUser, setSessionUser] = useState<AuthUser | null>(() =>
+    getPreviewSession(),
+  )
+  const [sessionChecked, setSessionChecked] = useState(false)
   const [books, setBooks] = useState<Book[]>(SEED_BOOKS)
   const [orders, setOrders] = useState<Order[]>(SEED_ORDERS)
   const [selectedBookId, setSelectedBookId] = useState<number | null>(null)
@@ -591,6 +600,26 @@ export default function App() {
     [books, cartItems],
   )
   const cartCount = cartItems.reduce((count, item) => count + item.quantity, 0)
+
+  useEffect(() => {
+    let active = true
+    void getCurrentUser()
+      .then((user) => {
+        if (!active) return
+        setSessionUser(user)
+      })
+      .catch(() => {
+        if (!active) return
+        setSessionUser(null)
+      })
+      .finally(() => {
+        if (active) setSessionChecked(true)
+      })
+
+    return () => {
+      active = false
+    }
+  }, [])
 
   useEffect(() => {
     if (!toast) return
@@ -851,10 +880,24 @@ export default function App() {
     { label: "Ma bibliothèque", view: "library" },
   ]
 
-  const showAuthSuccess = (message: string) =>
-    setToast({ message, variant: "success" })
   const showAuthError = (message: string) =>
     setToast({ message, variant: "error" })
+  const handleAuthenticated = (response: AuthApiResponse) => {
+    if (!response.user) {
+      showAuthError("La session n’a pas pu être initialisée.")
+      return
+    }
+    setSessionUser(response.user)
+    setToast({ message: response.message, variant: "success" })
+    setView("dashboard")
+  }
+  const handleLogout = async () => {
+    await logout()
+    setSessionUser(null)
+    setView("home")
+    setToast({ message: "Vous êtes déconnecté·e.", variant: "default" })
+  }
+  const redirectToLogin = useCallback(() => go("login"), [go])
 
   // ---- Auth gets its own focused chrome ----------------------------------
   if (view === "login") {
@@ -863,7 +906,7 @@ export default function App() {
         <LoginPage
           onBack={() => go("home")}
           onRegister={() => go("register")}
-          onSuccess={showAuthSuccess}
+          onSuccess={handleAuthenticated}
           onError={showAuthError}
           onForgotPassword={() =>
             setToast({
@@ -890,7 +933,7 @@ export default function App() {
         <RegisterPage
           onBack={() => go("home")}
           onLogin={() => go("login")}
-          onSuccess={showAuthSuccess}
+          onSuccess={handleAuthenticated}
           onError={showAuthError}
         />
         {toast && (
@@ -905,6 +948,29 @@ export default function App() {
   }
 
   // ---- Admin gets its own full-screen chrome ----------------------------
+  if (view === "dashboard") {
+    return (
+      <AuthGuard
+        user={sessionUser}
+        checking={!sessionChecked}
+        onUnauthenticated={redirectToLogin}
+      >
+        {sessionUser ? (
+          <DashboardPage
+            user={sessionUser}
+            onHome={() => go("home")}
+            onCatalog={() => go("catalog")}
+            onLibrary={() => go("library")}
+            onLogout={() => void handleLogout()}
+            onOpenBook={openBook}
+            onAddToCart={addToCart}
+            onToast={(message) => setToast({ message, variant: "success" })}
+          />
+        ) : null}
+      </AuthGuard>
+    )
+  }
+
   if (view === "admin") {
     return (
       <>
@@ -1362,26 +1428,40 @@ export default function App() {
               )}
             </button>
             <div className="hidden items-center gap-sm lg:flex">
-              <button
-                type="button"
-                onClick={() => go("login")}
-                className="cursor-pointer rounded-corner-full px-lg py-sm text-label-sm font-semibold text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
-              >
-                Se connecter
-              </button>
-              <button
-                type="button"
-                onClick={() => go("register")}
-                className="cursor-pointer rounded-corner-full bg-brand-primary px-lg py-sm text-label-sm font-semibold text-on-brand transition-colors hover:bg-brand-hover"
-              >
-                Créer un compte
-              </button>
+              {sessionUser ? (
+                <button
+                  type="button"
+                  onClick={() => go("dashboard")}
+                  className="cursor-pointer rounded-corner-full bg-brand-primary px-lg py-sm text-label-sm font-semibold text-on-brand transition-colors hover:bg-brand-hover"
+                >
+                  Mon espace
+                </button>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => go("login")}
+                    className="cursor-pointer rounded-corner-full px-lg py-sm text-label-sm font-semibold text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
+                  >
+                    Se connecter
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => go("register")}
+                    className="cursor-pointer rounded-corner-full bg-brand-primary px-lg py-sm text-label-sm font-semibold text-on-brand transition-colors hover:bg-brand-hover"
+                  >
+                    Créer un compte
+                  </button>
+                </>
+              )}
             </div>
             <div className="w-px h-6 bg-border-secondary hidden sm:block" />
             <button
               type="button"
-              onClick={() => go("login")}
-              aria-label="Ouvrir l’espace lecteur"
+              onClick={() => go(sessionUser ? "dashboard" : "login")}
+              aria-label={
+                sessionUser ? "Ouvrir mon espace" : "Ouvrir l’espace lecteur"
+              }
               className="cursor-pointer rounded-corner-full"
             >
               <Avatar

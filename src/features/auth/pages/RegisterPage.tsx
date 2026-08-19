@@ -1,10 +1,11 @@
 import { AuthShell } from "../components/AuthShell"
+import type { AuthApiResponse } from "../types"
 import { RegisterForm } from "../components/RegisterForm"
 
 type RegisterPageProps = {
   onBack: () => void
   onLogin: () => void
-  onSuccess: (message: string) => void
+  onSuccess: (response: AuthApiResponse) => void
   onError: (message: string) => void
 }
 

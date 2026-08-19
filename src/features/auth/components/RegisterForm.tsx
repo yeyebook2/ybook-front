@@ -5,10 +5,10 @@ import { FormField } from "./FormField"
 import { PasswordField } from "./PasswordField"
 import { register } from "../auth.api"
 import { hasFieldErrors, validateRegister } from "../auth.validation"
-import type { FieldErrors, RegisterFormValues } from "../types"
+import type { AuthApiResponse, FieldErrors, RegisterFormValues } from "../types"
 
 type RegisterFormProps = {
-  onSuccess: (message: string) => void
+  onSuccess: (response: AuthApiResponse) => void
   onError: (message: string) => void
 }
 
@@ -42,7 +42,7 @@ export function RegisterForm({ onSuccess, onError }: RegisterFormProps) {
     try {
       const response = await register(values)
       if (response.ok) {
-        onSuccess(response.message)
+        onSuccess(response)
       } else {
         onError(response.message)
       }

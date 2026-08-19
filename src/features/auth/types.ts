@@ -12,15 +12,17 @@ export type RegisterFormValues = {
 
 export type FieldErrors<T> = Partial<Record<keyof T, string>>
 
+export type AuthUser = {
+  id: string
+  name: string
+  email: string
+}
+
 export type AuthApiResponse = {
   ok: boolean
   mode: "preview" | "api"
   message: string
-  user?: {
-    id: string
-    name: string
-    email: string
-  }
+  user?: AuthUser
 }
 
 export type AuthAction = "login" | "register"
