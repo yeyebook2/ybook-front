@@ -32,6 +32,7 @@ import type { DashboardBook } from "@/features/dashboard/types"
 import { loadCart, MAX_CART_QUANTITY, saveCart } from "@/features/cart"
 import type { CartItem } from "@/features/cart"
 import { CatalogPage } from "@/features/catalog/pages/CatalogPage"
+import { BookDetailPage } from "@/features/book-details"
 import {
   buildChapters,
   PREVIEW_BOOKS,
@@ -233,11 +234,6 @@ export default function App() {
 
   const [libGrid, setLibGrid] = useState(true)
 
-  // Fiche produit — active tab + wishlist
-  const [productTab, setProductTab] =
-    useState<"description" | "reviews" | "author">("description")
-  const [wishlist, setWishlist] = useState<number[]>([])
-
   // Lecteur — réglages de lecture (thème, taille, interligne)
   const [readerTheme, setReaderTheme] = useState<"light" | "sepia" | "dark">(
     "light",
@@ -345,7 +341,8 @@ export default function App() {
     setView("catalog")
   }
 
-  const addToCart = (bookId: number) => {
+  const addToCart = (bookId: number, options: { openCart?: boolean } = {}) => {
+    const shouldOpenCart = options.openCart ?? true
     const existing = cartItems.find((item) => item.bookId === bookId)
     const book = books.find((b) => b.id === bookId)
 
@@ -354,7 +351,7 @@ export default function App() {
         message: "La quantité maximale de ce livre est de 5 exemplaires.",
         variant: "warning",
       })
-      setCartOpen(true)
+      if (shouldOpenCart) setCartOpen(true)
       return
     }
 
@@ -376,7 +373,7 @@ export default function App() {
       message: `« ${book?.title ?? "Livre"} » ajouté au panier`,
       variant: "success",
     })
-    setCartOpen(true)
+    if (shouldOpenCart) setCartOpen(true)
   }
 
   const addDashboardBookToCart = (book: DashboardBook) => {
@@ -505,14 +502,6 @@ export default function App() {
   const bestSellers = [...visibleBooks]
     .sort((a, b) => b.reviews - a.reviews)
     .slice(0, 10)
-  const relatedBooks = selectedBook
-    ? visibleBooks
-        .filter(
-          (b) =>
-            b.category === selectedBook.category && b.id !== selectedBook.id,
-        )
-        .slice(0, 4)
-    : []
   const libraryBooks = books.filter((b) => library.includes(b.id))
   const ownsSelected = selectedBook ? library.includes(selectedBook.id) : false
 
@@ -1464,358 +1453,25 @@ export default function App() {
 
         {/* ---------------------------------------------------------------- DETAILS */}
         {view === "details" && selectedBook && (
-          <div className="max-w-[1200px] mx-auto px-xl md:px-2xl py-3xl animate-fade">
-            {/* Breadcrumbs */}
-            <nav
-              className="flex items-center gap-sm text-label-sm text-text-tertiary mb-2xl"
-              aria-label="Fil d'ariane"
-            >
-              <button
-                onClick={() => go("home")}
-                className="hover:text-text-primary cursor-pointer"
-              >
-                Accueil
-              </button>
-              <span aria-hidden="true">/</span>
-              <button
-                onClick={() => openCatalog(selectedBook.category)}
-                className="hover:text-text-primary cursor-pointer"
-              >
-                {selectedBook.category}
-              </button>
-              <span aria-hidden="true">/</span>
-              <span className="text-text-primary font-medium truncate max-w-[40ch]">
-                {selectedBook.title}
-              </span>
-            </nav>
-
-            <div className="grid md:grid-cols-2 gap-4xl mb-3xl">
-              {/* Cover + thumbnails */}
-              <div className="flex flex-col gap-lg">
-                <div className="aspect-[2/3] w-full rounded-corner-xl overflow-hidden shadow-2xl border border-border-secondary bg-brand-tertiary">
-                  <img
-                    src={selectedBook.cover}
-                    alt={`Couverture de « ${selectedBook.title} »`}
-                    onError={handleCoverError}
-                    className="w-full h-full object-cover"
-                  />
-                </div>
-                <div className="flex justify-center gap-sm" aria-hidden="true">
-                  <div className="w-16 h-20 rounded-corner-sm overflow-hidden border-2 border-brand-primary bg-brand-tertiary">
-                    <img
-                      src={selectedBook.cover}
-                      alt=""
-                      onError={handleCoverError}
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-                  <div className="w-16 h-20 rounded-corner-sm border border-border-secondary bg-brand-tertiary opacity-50" />
-                  <div className="w-16 h-20 rounded-corner-sm border border-border-secondary bg-brand-tertiary opacity-50" />
-                </div>
-              </div>
-
-              {/* Info */}
-              <div className="flex flex-col gap-xl">
-                <div className="flex flex-col gap-md">
-                  <div className="flex items-center gap-sm">
-                    <span className="px-md py-xs rounded-corner-sm bg-[#2e8b57]/14 text-[#1f6642] text-video-title font-bold">
-                      Disponible
-                    </span>
-                    {selectedBook.reviews > 300 && (
-                      <span className="px-md py-xs rounded-corner-sm bg-brand-tertiary text-brand-primary text-video-title font-bold">
-                        Best-seller
-                      </span>
-                    )}
-                  </div>
-                  <h1 className="font-serif text-text-primary text-[36px] md:text-[44px] leading-[1.05]">
-                    {selectedBook.title}
-                  </h1>
-                  {selectedBook.subtitle && (
-                    <p className="text-label text-text-secondary">
-                      {selectedBook.subtitle}
-                    </p>
-                  )}
-                  <p className="text-heading text-text-secondary">
-                    par{" "}
-                    <span className="text-brand-primary font-medium">
-                      {selectedBook.author}
-                    </span>
-                  </p>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-lg text-label-sm text-text-secondary">
-                  <RatingStars rating={selectedBook.rating} />
-                  <span className="text-border-primary" aria-hidden="true">
-                    |
-                  </span>
-                  <span>{selectedBook.reviews} avis</span>
-                  <span className="text-border-primary" aria-hidden="true">
-                    |
-                  </span>
-                  <span>
-                    {selectedBook.pages} pages · {selectedBook.year}
-                  </span>
-                </div>
-
-                {/* Price box */}
-                <div className="rounded-corner-lg bg-surface-secondary-bg border border-border-secondary p-xl flex flex-col gap-lg">
-                  <div className="flex items-baseline gap-md flex-wrap">
-                    <span className="text-display font-bold text-text-primary">
-                      {formatPrice(selectedBook.price)}
-                    </span>
-                    <span className="text-label-sm text-text-tertiary">
-                      TTC
-                    </span>
-                  </div>
-                  <div className="flex gap-md">
-                    {ownsSelected ? (
-                      <Button
-                        variant="primary"
-                        iconStart={<BookText className="w-4 h-4" />}
-                        onClick={() => startReading(selectedBook.id)}
-                      >
-                        {progress[selectedBook.id]
-                          ? "Reprendre la lecture"
-                          : "Lire maintenant"}
-                      </Button>
-                    ) : (
-                      <Button
-                        variant="primary"
-                        iconStart={<ShoppingBag className="w-4 h-4" />}
-                        onClick={() => addToCart(selectedBook.id)}
-                      >
-                        Acheter maintenant
-                      </Button>
-                    )}
-                    <button
-                      onClick={() =>
-                        setWishlist((w) =>
-                          w.includes(selectedBook.id)
-                            ? w.filter((x) => x !== selectedBook.id)
-                            : [...w, selectedBook.id],
-                        )
-                      }
-                      aria-pressed={wishlist.includes(selectedBook.id)}
-                      aria-label="Ajouter à la liste de souhaits"
-                      className={`inline-flex items-center justify-center px-lg rounded-corner-md border transition-colors cursor-pointer ${
-                        wishlist.includes(selectedBook.id)
-                          ? "bg-brand-tertiary border-brand-primary text-brand-primary"
-                          : "border-border-primary text-text-secondary hover:bg-surface-hover"
-                      }`}
-                    >
-                      <Heart
-                        className={`w-5 h-5 ${
-                          wishlist.includes(selectedBook.id)
-                            ? "fill-current"
-                            : ""
-                        }`}
-                        aria-hidden="true"
-                      />
-                    </button>
-                  </div>
-                  <p className="text-video-title text-text-tertiary text-center inline-flex items-center justify-center gap-xs">
-                    <ShieldCheck className="w-3.5 h-3.5" aria-hidden="true" />{" "}
-                    Paiement sécurisé par Mobile Money · lecture en ligne
-                    immédiate
-                  </p>
-                </div>
-
-                {/* Meta grid */}
-                <dl className="grid grid-cols-2 gap-x-2xl gap-y-xs text-label-sm">
-                  {[
-                    { k: "Format", v: selectedBook.format ?? "ePub" },
-                    { k: "Pages", v: `${selectedBook.pages}` },
-                    {
-                      k: "Langue",
-                      v: selectedBook.language ?? "Français",
-                    },
-                    {
-                      k: "ISBN",
-                      v: selectedBook.isbn ?? "Non renseigné",
-                    },
-                    { k: "Publié", v: `${selectedBook.year}` },
-                    { k: "Catégorie", v: selectedBook.category },
-                  ].map((m) => (
-                    <div
-                      key={m.k}
-                      className="flex justify-between py-sm border-b border-border-secondary"
-                    >
-                      <dt className="text-text-tertiary">{m.k}</dt>
-                      <dd className="font-medium text-text-primary">{m.v}</dd>
-                    </div>
-                  ))}
-                </dl>
-
-                {/* Share */}
-                <div className="flex items-center gap-md">
-                  <span className="text-label-sm font-medium text-text-secondary inline-flex items-center gap-xs">
-                    <Share2 className="w-4 h-4" aria-hidden="true" /> Partager :
-                  </span>
-                  {["WhatsApp", "Facebook", "X", "Copier le lien"].map(
-                    (net) => (
-                      <button
-                        key={net}
-                        onClick={() =>
-                          setToast({
-                            message: `Lien partagé (${net})`,
-                            variant: "success",
-                          })
-                        }
-                        aria-label={`Partager sur ${net}`}
-                        className="w-9 h-9 rounded-corner-full bg-surface-secondary-bg border border-border-secondary text-text-secondary hover:bg-brand-tertiary hover:text-brand-primary transition-colors cursor-pointer inline-flex items-center justify-center text-video-title font-semibold"
-                      >
-                        {net === "Copier le lien" ? "🔗" : net[0]}
-                      </button>
-                    ),
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Tabs */}
-            <div className="border-b border-border-secondary mb-xl">
-              <div
-                className="flex gap-2xl"
-                role="tablist"
-                aria-label="Détails du livre"
-              >
-                {([
-                  { id: "description", label: "Description" },
-                  { id: "reviews", label: `Avis (${selectedBook.reviews})` },
-                  { id: "author", label: "Du même auteur" },
-                ] as const).map((t) => (
-                  <button
-                    key={t.id}
-                    role="tab"
-                    aria-selected={productTab === t.id}
-                    onClick={() => setProductTab(t.id)}
-                    className={`pb-md border-b-2 text-label-sm font-medium transition-colors cursor-pointer ${
-                      productTab === t.id
-                        ? "border-brand-primary text-text-primary"
-                        : "border-transparent text-text-tertiary hover:text-text-primary"
-                    }`}
-                  >
-                    {t.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {productTab === "description" && (
-              <div className="grid md:grid-cols-3 gap-2xl">
-                <div className="md:col-span-2 flex flex-col gap-lg text-label text-text-secondary leading-relaxed">
-                  <p>{selectedBook.description}</p>
-                  <h3 className="text-label font-semibold text-text-primary mt-md">
-                    Au sommaire
-                  </h3>
-                  <ul className="flex flex-col gap-xs">
-                    {selectedBook.chapters.map((c, i) => (
-                      <li
-                        key={i}
-                        className="flex items-center gap-md text-label-sm text-text-secondary"
-                      >
-                        <span className="inline-flex items-center justify-center w-6 h-6 rounded-corner-full bg-brand-tertiary text-brand-primary text-video-title font-semibold shrink-0">
-                          {i + 1}
-                        </span>
-                        {c.title}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-                <div className="rounded-corner-lg bg-surface-secondary-bg border border-border-secondary p-xl h-fit">
-                  <h3 className="text-label font-semibold text-text-primary mb-md">
-                    Tags
-                  </h3>
-                  <div className="flex flex-wrap gap-sm">
-                    {(
-                      selectedBook.tags ?? [
-                        selectedBook.category.toLowerCase(),
-                        "afrique",
-                        "francophone",
-                        "littérature",
-                        selectedBook.author.split(" ").pop()?.toLowerCase() ??
-                          "auteur",
-                      ]
-                    ).map((tag) => (
-                      <span
-                        key={tag}
-                        className="px-md py-xs rounded-corner-full bg-surface-bg border border-border-secondary text-video-title text-text-secondary"
-                      >
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {productTab === "reviews" && (
-              <div className="flex flex-col gap-lg max-w-[68ch]">
-                {[
-                  {
-                    n: "Aminata D.",
-                    r: 5,
-                    t: "Un texte bouleversant, porté par une langue superbe. Je l'ai lu d'une traite.",
-                  },
-                  {
-                    n: "Kofi M.",
-                    r: 4,
-                    t: "Une lecture exigeante mais profondément marquante. À recommander.",
-                  },
-                  {
-                    n: "Fatou N.",
-                    r: 5,
-                    t: "Chaque page respire la mémoire du continent. Magnifique.",
-                  },
-                ].map((rev) => (
-                  <div
-                    key={rev.n}
-                    className="rounded-corner-lg bg-surface-bg border border-border-secondary p-lg flex flex-col gap-xs"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-label font-semibold text-text-primary">
-                        {rev.n}
-                      </span>
-                      <span
-                        className="inline-flex items-center gap-0.5"
-                        aria-label={`${rev.r} sur 5`}
-                      >
-                        {Array.from({ length: 5 }).map((_, s) => (
-                          <Star
-                            key={s}
-                            className={`w-3.5 h-3.5 fill-current ${
-                              s < rev.r ? "text-brand-primary" : "text-black/12"
-                            }`}
-                            strokeWidth={0}
-                            aria-hidden="true"
-                          />
-                        ))}
-                      </span>
-                    </div>
-                    <p className="text-label-sm text-text-secondary">{rev.t}</p>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {productTab === "author" &&
-              (relatedBooks.length > 0 ? (
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-2xl">
-                  {relatedBooks.map((book) => (
-                    <BookCard
-                      key={book.id}
-                      book={book}
-                      onOpen={() => openBook(book.id)}
-                      onAdd={() => addToCart(book.id)}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <p className="text-label-sm text-text-secondary">
-                  Aucun autre titre dans cette catégorie pour le moment.
-                </p>
-              ))}
-          </div>
+          <BookDetailPage
+            bookSlug={selectedBook.slug}
+            fallbackBook={selectedBook}
+            isAuthenticated={Boolean(sessionUser)}
+            owned={ownsSelected}
+            progress={progress[selectedBook.id]}
+            onBack={() => openCatalog(selectedBook.category)}
+            onOpenBook={(book) => openBook(book.id)}
+            onAddToCart={(book) => addToCart(book.id)}
+            onBuyNow={(book) => {
+              addToCart(book.id, { openCart: false })
+              setCartOpen(false)
+              go("checkout")
+            }}
+            onStartReading={(book) => startReading(book.id)}
+            onToast={(message, variant = "success") =>
+              setToast({ message, variant })
+            }
+          />
         )}
 
         {/* ---------------------------------------------------------------- CHECKOUT */}

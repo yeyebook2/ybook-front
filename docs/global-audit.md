@@ -24,7 +24,7 @@ Le cahier des charges exige notamment un catalogue filtrable, une fiche livre co
 | Authentification | Conforme preview / prêt API | Pages login/register modulaires, validation locale, consentements, gardes et routes `/api/v1/auth/*` documentées. |
 | Accueil | Partiel | Hero, nouveautés, best-sellers, catégories et recherche existent ; le carrousel, les recommandations connectées et les pages légales restent à créer. |
 | Catalogue | Conforme preview / prêt API | Filtres, facettes dynamiques, tri, grille/liste, pagination, états UX et `GET /api/v1/books` sont séparés et documentés. |
-| Fiche livre | Partiel | Rendu preview riche, panier, wishlist et onglets présents ; détail API, avis CRUD, SEO Schema.org, zoom, auteur et recommandations backend restent à brancher. |
+| Fiche livre | Conforme preview / prêt API | Feature `book-details` extraite, zoom, achat, panier, wishlist, partage, métadonnées, avis, titres associés et états UX documentés ; endpoints détail/avis/recommandations restent à confirmer côté backend. |
 
 L’accueil affiche désormais jusqu’à huit nouveautés et dix best-sellers lorsque le catalogue chargé le permet. Le carrousel promotionnel et les recommandations personnalisées n’ont pas été simulés, car ils nécessitent soit un contrat de données, soit une décision UX supplémentaire.
 
@@ -55,24 +55,25 @@ L’accès invité au checkout et à la confirmation est conforme à la décisio
 | Auth `/api/v1/auth/*` | Service et documentation présents, avec normalisation des réponses et mode preview. |
 | Dashboard `/api/v1/library`, progress et `/api/v1/books` | Service composé et documenté ; garde frontend distincte de l’autorisation backend. |
 | Catalogue `/api/v1/books` | Service, types, facettes, pagination et adaptateur présents. |
-| Cart, orders, payments, reviews, library read/download/progress/bookmarks, admin | Contrats identifiés dans le cahier des charges, mais services frontend dédiés encore à créer. |
+| Fiche `/api/v1/books/{slug}` et reviews | Service `book-details`, normalisation détail/avis/related et documentation présentes. |
+| Cart, orders, payments, library read/download/progress/bookmarks, admin | Contrats identifiés dans le cahier des charges, mais services frontend dédiés encore à créer. |
 
 Le frontend ne doit pas considérer les données seed de `App.tsx` comme une source de vérité production. Elles restent légitimes pour le mode preview, mais devront être remplacées par des services dédiés lorsque les contrats backend seront activés.
 
 ## Audit de modularité
 
-L’authentification, le dashboard et le catalogue respectent la convention de composants séparés : pages, hooks, types, services API, états et composants visuels sont répartis dans leurs features respectives. Chaque page de ce périmètre possède une documentation dédiée, et les contrats API sont séparés dans `docs/api/`.
+L’authentification, le dashboard, le catalogue et désormais la fiche livre respectent la convention de composants séparés : pages, hooks, types, services API, états et composants visuels sont répartis dans leurs features respectives. Chaque page livrée dans ce périmètre possède une documentation dédiée, et les contrats API sont séparés dans `docs/api/`.
 
-La modularité globale est cependant **partielle**. `src/App.tsx` conserve environ 3 800 lignes et porte encore le routeur local, les états du panier, les commandes seed, la fiche livre, le checkout, la bibliothèque, le lecteur, le drawer panier et l’intégralité du back-office. Cette situation ne crée pas de régression fonctionnelle immédiate, mais elle augmente le risque de couplage et rend les prochains branchements API plus difficiles à isoler.
+La modularité globale est cependant **partielle**. `src/App.tsx` conserve environ 3 500 lignes et porte encore le routeur local, les états du panier, les commandes seed, le checkout, la bibliothèque, le lecteur, le drawer panier et l’intégralité du back-office. Cette situation ne crée pas de régression fonctionnelle immédiate, mais elle augmente le risque de couplage et rend les prochains branchements API plus difficiles à isoler.
 
 | Niveau | Évaluation |
 |---|---|
-| Composants auth/catalog/dashboard | Conforme et réutilisable. |
-| Services API | Partiel : trois domaines couverts, sept domaines métier encore absents. |
+| Composants auth/catalog/dashboard/book-details | Conforme et réutilisable. |
+| Services API | Partiel : quatre domaines couverts, les domaines panier serveur, commandes, paiements, bibliothèque, lecteur et admin restent à brancher. |
 | État client | Partiel : panier et progression locaux, pas de store global ni de synchronisation serveur. |
 | Pages et documentation | Partiel : pages principales documentées, vues historiques de `App.tsx` encore sans fichiers dédiés. |
 
-La prochaine refactorisation recommandée est de sortir successivement `features/cart`, `features/checkout`, `features/book-details`, `features/library`, `features/reader` et `features/admin`, sans changer le routeur tant que le périmètre métier n’est pas stabilisé.
+La prochaine refactorisation recommandée est de sortir successivement `features/checkout`, `features/library`, `features/reader` et `features/admin`, sans changer le routeur tant que le périmètre métier n’est pas stabilisé.
 
 ## Corrections appliquées pendant l’audit
 
@@ -82,7 +83,8 @@ La prochaine refactorisation recommandée est de sortir successivement `features
 | Achat invité | `src/App.tsx`, `docs/auth-audit.md` | Checkout/confirmation publics ; bibliothèque/lecteur/admin restent privés. |
 | Fiche sans données fabriquées | `src/App.tsx`, `src/features/catalog/types.ts`, `catalog.api.ts` | ISBN, remise et langue sont désormais réels ou explicitement absents ; format, tags, sous-titre et auteur sont adaptables depuis l’API. |
 | Accueil | `src/App.tsx` | Jusqu’à huit nouveautés et dix best-sellers ; footer sans liens silencieux. |
-| Documentation | `docs/global-audit.md` | Audit global, limites et prochaine trajectoire documentés. |
+| Fiche livre | `src/features/book-details/*`, `src/App.tsx` | Bloc legacy remplacé par une page modulaire avec service, hook, avis, achat, partage et related. |
+| Documentation | `docs/global-audit.md`, `docs/pages/book-details.md`, `docs/api/book-details.md` | Audit global et contrat détail documentés. |
 
 ## Éléments volontairement non modifiés
 

@@ -95,6 +95,11 @@ type BackendAuthor = {
   slug?: string
 }
 
+type BackendChapter = {
+  title?: string
+  content?: string[]
+}
+
 export type BackendBook = {
   id: number | string
   slug?: string
@@ -123,6 +128,7 @@ export type BackendBook = {
   language?: string
   description?: string
   tags?: string[]
+  chapters?: BackendChapter[]
   published?: boolean
   published_at?: string
 }
