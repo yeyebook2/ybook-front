@@ -5,6 +5,8 @@ export type DashboardBook = {
   title: string
   author: string
   category: string
+  price?: number
+  slug?: string
   cover: string
   progress?: number
   isNew?: boolean

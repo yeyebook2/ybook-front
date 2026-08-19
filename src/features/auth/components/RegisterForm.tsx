@@ -1,6 +1,7 @@
 import { useState } from "react"
 
 import { AuthSubmitButton } from "./AuthSubmitButton"
+import { ConsentField } from "./ConsentField"
 import { FormField } from "./FormField"
 import { PasswordField } from "./PasswordField"
 import { register } from "../auth.api"
@@ -13,10 +14,15 @@ type RegisterFormProps = {
 }
 
 const initialValues: RegisterFormValues = {
-  name: "",
+  firstName: "",
+  lastName: "",
   email: "",
+  phone: "",
   password: "",
   confirmPassword: "",
+  acceptTerms: false,
+  acceptPrivacy: false,
+  acceptMarketing: false,
 }
 
 export function RegisterForm({ onSuccess, onError }: RegisterFormProps) {
@@ -59,18 +65,32 @@ export function RegisterForm({ onSuccess, onError }: RegisterFormProps) {
 
   return (
     <form className="flex flex-col gap-xl" onSubmit={handleSubmit} noValidate>
-      <div className="flex flex-col gap-lg">
+      <div className="grid gap-lg sm:grid-cols-2">
         <FormField
-          id="auth-register-name"
-          name="name"
-          label="Nom complet"
+          id="auth-register-first-name"
+          name="firstName"
+          label="Prénom"
           type="text"
-          placeholder="Aminata Diallo"
-          value={values.name}
-          onChange={(event) => updateField("name", event.target.value)}
-          error={errors.name}
-          autoComplete="name"
+          placeholder="Aminata"
+          value={values.firstName}
+          onChange={(event) => updateField("firstName", event.target.value)}
+          error={errors.firstName}
+          autoComplete="given-name"
         />
+        <FormField
+          id="auth-register-last-name"
+          name="lastName"
+          label="Nom"
+          type="text"
+          placeholder="Diallo"
+          value={values.lastName}
+          onChange={(event) => updateField("lastName", event.target.value)}
+          error={errors.lastName}
+          autoComplete="family-name"
+        />
+      </div>
+
+      <div className="flex flex-col gap-lg">
         <FormField
           id="auth-register-email"
           name="email"
@@ -83,6 +103,19 @@ export function RegisterForm({ onSuccess, onError }: RegisterFormProps) {
           hint="Elle sera utilisée pour retrouver votre compte."
           autoComplete="email"
           inputMode="email"
+        />
+        <FormField
+          id="auth-register-phone"
+          name="phone"
+          label="Téléphone"
+          type="tel"
+          placeholder="+228 90 00 00 00"
+          value={values.phone}
+          onChange={(event) => updateField("phone", event.target.value)}
+          error={errors.phone}
+          hint="Utilisé pour les services Mobile Money de la plateforme."
+          autoComplete="tel"
+          inputMode="tel"
         />
         <PasswordField
           id="auth-register-password"
@@ -101,6 +134,32 @@ export function RegisterForm({ onSuccess, onError }: RegisterFormProps) {
           error={errors.confirmPassword}
           autoComplete="new-password"
         />
+      </div>
+
+      <div className="flex flex-col gap-md rounded-corner-md border border-border-secondary bg-surface-secondary-bg p-lg">
+        <ConsentField
+          id="auth-register-terms"
+          checked={values.acceptTerms}
+          onChange={(checked) => updateField("acceptTerms", checked)}
+          error={errors.acceptTerms}
+        >
+          J’accepte les conditions d’utilisation de YéYéBook.
+        </ConsentField>
+        <ConsentField
+          id="auth-register-privacy"
+          checked={values.acceptPrivacy}
+          onChange={(checked) => updateField("acceptPrivacy", checked)}
+          error={errors.acceptPrivacy}
+        >
+          J’ai lu et j’accepte la politique de confidentialité.
+        </ConsentField>
+        <ConsentField
+          id="auth-register-marketing"
+          checked={values.acceptMarketing}
+          onChange={(checked) => updateField("acceptMarketing", checked)}
+        >
+          Je souhaite recevoir les nouveautés et communications de YéYéBook.
+        </ConsentField>
       </div>
 
       <AuthSubmitButton loading={loading}>Créer mon compte</AuthSubmitButton>

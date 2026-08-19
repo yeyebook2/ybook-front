@@ -20,10 +20,16 @@ import { Wordmark } from "@/components/brand/Wordmark"
 import { LoginPage } from "@/features/auth/pages/LoginPage"
 import { RegisterPage } from "@/features/auth/pages/RegisterPage"
 import { AuthGuard } from "@/features/auth/components/AuthGuard"
-import { getCurrentUser, logout } from "@/features/auth/auth.api"
+import { RoleGuard } from "@/features/auth/components/RoleGuard"
+import {
+  forgotPassword,
+  getCurrentUser,
+  logout,
+} from "@/features/auth/auth.api"
 import { getPreviewSession } from "@/features/auth/auth.session"
 import type { AuthApiResponse, AuthUser } from "@/features/auth/types"
 import { DashboardPage } from "@/features/dashboard/pages/DashboardPage"
+import type { DashboardBook } from "@/features/dashboard/types"
 import {
   ShoppingBag,
   ChevronLeft,
@@ -682,6 +688,18 @@ export default function App() {
     setCartOpen(true)
   }
 
+  const addDashboardBookToCart = (book: DashboardBook) => {
+    const localBook = books.find((item) => item.id === book.id)
+    if (!localBook) {
+      setToast({
+        message: "La fiche complète doit être chargée depuis le catalogue.",
+        variant: "warning",
+      })
+      return
+    }
+    addToCart(localBook.id)
+  }
+
   const updateQty = (bookId: number, delta: number) =>
     setCartItems((prev) =>
       prev
@@ -898,6 +916,32 @@ export default function App() {
     setToast({ message: "Vous êtes déconnecté·e.", variant: "default" })
   }
   const redirectToLogin = useCallback(() => go("login"), [go])
+  const redirectUnauthorized = useCallback(() => {
+    setToast({
+      message: "Vous n’avez pas les permissions pour accéder à cet espace.",
+      variant: "error",
+    })
+    go("home")
+  }, [go])
+  const protectedViews: View[] = [
+    "library",
+    "reader",
+    "checkout",
+    "confirmation",
+    "admin",
+  ]
+
+  if (protectedViews.includes(view) && (!sessionChecked || !sessionUser)) {
+    return (
+      <AuthGuard
+        user={sessionUser}
+        checking={!sessionChecked}
+        onUnauthenticated={redirectToLogin}
+      >
+        {null}
+      </AuthGuard>
+    )
+  }
 
   // ---- Auth gets its own focused chrome ----------------------------------
   if (view === "login") {
@@ -908,13 +952,21 @@ export default function App() {
           onRegister={() => go("register")}
           onSuccess={handleAuthenticated}
           onError={showAuthError}
-          onForgotPassword={() =>
-            setToast({
-              message:
-                "La récupération du mot de passe sera disponible avec l’API.",
-              variant: "default",
-            })
-          }
+          onForgotPassword={(email) => {
+            if (!email.trim()) {
+              showAuthError("Saisissez votre e-mail avant de continuer.")
+              return
+            }
+            void forgotPassword(email)
+              .then((message) => setToast({ message, variant: "default" }))
+              .catch((error) =>
+                showAuthError(
+                  error instanceof Error
+                    ? error.message
+                    : "Impossible de lancer la récupération.",
+                ),
+              )
+          }}
         />
         {toast && (
           <Toast
@@ -963,7 +1015,7 @@ export default function App() {
             onLibrary={() => go("library")}
             onLogout={() => void handleLogout()}
             onOpenBook={openBook}
-            onAddToCart={addToCart}
+            onAddToCart={addDashboardBookToCart}
             onToast={(message) => setToast({ message, variant: "success" })}
           />
         ) : null}
@@ -973,30 +1025,37 @@ export default function App() {
 
   if (view === "admin") {
     return (
-      <>
-        <AdminView
-          books={books}
-          orders={orders}
-          onSaveBook={saveBook}
-          onDeleteBook={deleteBook}
-          onTogglePublish={togglePublish}
-          onSetOrderStatus={setOrderStatus}
-          onExit={() => go("home")}
-        />
-        {toast && (
-          <div
-            className="fixed bottom-xl left-1/2 -translate-x-1/2 z-[80] animate-rise"
-            role="status"
-            aria-live="polite"
-          >
-            <Toast
-              message={toast.message}
-              variant={toast.variant}
-              onDismiss={() => setToast(null)}
-            />
-          </div>
-        )}
-      </>
+      <RoleGuard
+        user={sessionUser}
+        checking={!sessionChecked}
+        allowedRoles={["admin", "super_admin", "moderator"]}
+        onUnauthorized={redirectUnauthorized}
+      >
+        <>
+          <AdminView
+            books={books}
+            orders={orders}
+            onSaveBook={saveBook}
+            onDeleteBook={deleteBook}
+            onTogglePublish={togglePublish}
+            onSetOrderStatus={setOrderStatus}
+            onExit={() => go("home")}
+          />
+          {toast && (
+            <div
+              className="fixed bottom-xl left-1/2 -translate-x-1/2 z-[80] animate-rise"
+              role="status"
+              aria-live="polite"
+            >
+              <Toast
+                message={toast.message}
+                variant={toast.variant}
+                onDismiss={() => setToast(null)}
+              />
+            </div>
+          )}
+        </>
+      </RoleGuard>
     )
   }
 

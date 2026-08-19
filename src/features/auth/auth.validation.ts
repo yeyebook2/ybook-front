@@ -1,6 +1,7 @@
 import type { FieldErrors, LoginFormValues, RegisterFormValues } from "./types"
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const PHONE_PATTERN = /^\+?[0-9\s().-]{8,20}$/
 
 export function validateLogin(
   values: LoginFormValues,
@@ -27,16 +28,28 @@ export function validateRegister(
 ): FieldErrors<RegisterFormValues> {
   const errors: FieldErrors<RegisterFormValues> = {}
 
-  if (!values.name.trim()) {
-    errors.name = "Votre nom est requis."
-  } else if (values.name.trim().length < 2) {
-    errors.name = "Votre nom doit contenir au moins 2 caractères."
+  if (!values.firstName.trim()) {
+    errors.firstName = "Votre prénom est requis."
+  } else if (values.firstName.trim().length < 2) {
+    errors.firstName = "Votre prénom doit contenir au moins 2 caractères."
+  }
+
+  if (!values.lastName.trim()) {
+    errors.lastName = "Votre nom est requis."
+  } else if (values.lastName.trim().length < 2) {
+    errors.lastName = "Votre nom doit contenir au moins 2 caractères."
   }
 
   if (!values.email.trim()) {
     errors.email = "Votre adresse e-mail est requise."
   } else if (!EMAIL_PATTERN.test(values.email.trim())) {
     errors.email = "Saisissez une adresse e-mail valide."
+  }
+
+  if (!values.phone.trim()) {
+    errors.phone = "Votre numéro de téléphone est requis."
+  } else if (!PHONE_PATTERN.test(values.phone.trim())) {
+    errors.phone = "Saisissez un numéro de téléphone valide."
   }
 
   if (!values.password) {
@@ -49,6 +62,15 @@ export function validateRegister(
     errors.confirmPassword = "Confirmez votre mot de passe."
   } else if (values.password !== values.confirmPassword) {
     errors.confirmPassword = "Les mots de passe ne correspondent pas."
+  }
+
+  if (!values.acceptTerms) {
+    errors.acceptTerms = "Vous devez accepter les conditions d’utilisation."
+  }
+
+  if (!values.acceptPrivacy) {
+    errors.acceptPrivacy =
+      "Vous devez accepter la politique de confidentialité."
   }
 
   return errors

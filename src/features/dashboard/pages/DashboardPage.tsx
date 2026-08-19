@@ -23,7 +23,7 @@ type DashboardPageProps = {
   onLibrary: () => void
   onLogout: () => void
   onOpenBook: (bookId: number) => void
-  onAddToCart: (bookId: number) => void
+  onAddToCart: (book: DashboardBook) => void
   onToast: (message: string) => void
 }
 
@@ -255,7 +255,7 @@ export function DashboardPage({
                     book={book}
                     onOpen={handleOpenBook}
                     onAdd={(item) => {
-                      onAddToCart(item.id)
+                      onAddToCart(item)
                       onToast(`« ${item.title} » ajouté au panier`)
                     }}
                   />

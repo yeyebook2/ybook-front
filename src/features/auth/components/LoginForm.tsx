@@ -10,7 +10,7 @@ import type { AuthApiResponse, FieldErrors, LoginFormValues } from "../types"
 type LoginFormProps = {
   onSuccess: (response: AuthApiResponse) => void
   onError: (message: string) => void
-  onForgotPassword: () => void
+  onForgotPassword: (email: string) => void
 }
 
 const initialValues: LoginFormValues = {
@@ -88,7 +88,7 @@ export function LoginForm({
       <div className="flex justify-end">
         <button
           type="button"
-          onClick={onForgotPassword}
+          onClick={() => onForgotPassword(values.email)}
           className="cursor-pointer text-video-title font-semibold text-brand-primary underline decoration-brand-primary/30 underline-offset-4 transition-colors hover:text-brand-hover"
         >
           Mot de passe oublié ?

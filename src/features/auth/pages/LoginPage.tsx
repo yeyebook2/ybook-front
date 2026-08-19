@@ -7,7 +7,7 @@ type LoginPageProps = {
   onRegister: () => void
   onSuccess: (response: AuthApiResponse) => void
   onError: (message: string) => void
-  onForgotPassword: () => void
+  onForgotPassword: (email: string) => void
 }
 
 export function LoginPage({

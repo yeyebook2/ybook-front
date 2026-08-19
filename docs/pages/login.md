@@ -24,4 +24,4 @@ L’adresse e-mail est obligatoire et doit respecter un format valide. Le mot de
 
 La soumission affiche un état de chargement puis transmet la réponse à l’application racine. En mode preview, une réponse valide crée une session temporaire de démonstration et ouvre le dashboard avec un toast de succès. En mode API, la session est créée par le backend et la réponse doit contenir l’utilisateur authentifié.
 
-Le lien Mot de passe oublié est volontairement un point d’extension : il affiche actuellement un toast indiquant que le flux sera disponible avec l’API.
+Le lien Mot de passe oublié transmet l’e-mail saisi à `forgotPassword`. Le service appelle `POST /api/v1/auth/forgot-password` lorsque l’API est configurée et conserve un message preview tant que le backend n’est pas disponible.
