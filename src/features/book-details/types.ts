@@ -45,6 +45,7 @@ export type BookDetailPageProps = {
   progress?: number
   onBack: () => void
   onOpenBook: (book: CatalogBook) => void
+  onOpenAuthor?: (author: string, slug?: string) => void
   onAddToCart: (book: Book) => void
   onBuyNow: (book: Book) => void
   onStartReading: (book: Book) => void

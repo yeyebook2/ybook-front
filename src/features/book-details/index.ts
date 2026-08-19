@@ -1,6 +1,7 @@
 export { BookDetailPage } from "./pages/BookDetailPage"
 export {
   getBookDetail,
+  getBookRelated,
   getBookReviews,
   submitBookReview,
 } from "./book-details.api"

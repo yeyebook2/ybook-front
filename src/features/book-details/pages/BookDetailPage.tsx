@@ -21,6 +21,7 @@ export function BookDetailPage({
   progress,
   onBack,
   onOpenBook,
+  onOpenAuthor,
   onAddToCart,
   onBuyNow,
   onStartReading,
@@ -49,6 +50,36 @@ export function BookDetailPage({
   }
 
   const { book, reviews, relatedBooks } = data
+  const bookSchema = {
+    "@context": "https://schema.org",
+    "@type": "Book",
+    name: book.title,
+    author: {
+      "@type": "Person",
+      name: book.author,
+    },
+    image: book.cover,
+    description: book.description,
+    isbn: book.isbn,
+    numberOfPages: book.pages,
+    inLanguage: book.language ?? "fr",
+    aggregateRating:
+      reviews.total > 0
+        ? {
+            "@type": "AggregateRating",
+            ratingValue: book.rating,
+            reviewCount: reviews.total,
+            bestRating: 5,
+          }
+        : undefined,
+    offers: {
+      "@type": "Offer",
+      price: book.price,
+      priceCurrency: "XOF",
+      availability: "https://schema.org/InStock",
+      url: window.location.href,
+    },
+  }
 
   const handleShare = (network: "whatsapp" | "facebook" | "x" | "copy") => {
     const url = window.location.href
@@ -81,6 +112,9 @@ export function BookDetailPage({
 
   return (
     <main className="animate-fade">
+      <script type="application/ld+json">
+        {JSON.stringify(bookSchema).replace(/</g, "\\u003c")}
+      </script>
       <div className="mx-auto max-w-[1200px] px-xl py-3xl md:px-2xl">
         <nav
           className="mb-2xl flex flex-wrap items-center gap-sm text-label-sm text-text-tertiary"
@@ -132,9 +166,19 @@ export function BookDetailPage({
               )}
               <p className="text-heading text-text-secondary">
                 par{" "}
-                <span className="font-medium text-brand-primary">
-                  {book.author}
-                </span>
+                {onOpenAuthor ? (
+                  <button
+                    type="button"
+                    onClick={() => onOpenAuthor(book.author, book.authorSlug)}
+                    className="cursor-pointer font-medium text-brand-primary hover:text-brand-primary-hover"
+                  >
+                    {book.author}
+                  </button>
+                ) : (
+                  <span className="font-medium text-brand-primary">
+                    {book.author}
+                  </span>
+                )}
               </p>
             </div>
 

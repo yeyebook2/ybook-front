@@ -1461,6 +1461,7 @@ export default function App() {
             progress={progress[selectedBook.id]}
             onBack={() => openCatalog(selectedBook.category)}
             onOpenBook={(book) => openBook(book.id)}
+            onOpenAuthor={() => showComingSoon("Auteur")}
             onAddToCart={(book) => addToCart(book.id)}
             onBuyNow={(book) => {
               addToCart(book.id, { openCart: false })

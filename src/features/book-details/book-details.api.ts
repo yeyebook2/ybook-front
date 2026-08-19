@@ -199,12 +199,31 @@ export async function getBookDetail(
   const reviews = payload.reviews
     ? normalizeReviewPage(payload.reviews)
     : await getBookReviews(slug)
-  const relatedBooks = (
-    payload.related?.items ??
-    payload.related?.books ??
-    []
-  ).map(mapBackendBook)
+  const relatedBooks = payload.related
+    ? (payload.related.items ?? payload.related.books ?? []).map(mapBackendBook)
+    : await getBookRelated(slug)
   return { book, reviews, relatedBooks }
+}
+
+export async function getBookRelated(
+  slug: string,
+  limit = 4,
+): Promise<CatalogBook[]> {
+  if (USE_PREVIEW_DETAIL) {
+    const book = PREVIEW_BOOKS.find((candidate) => candidate.slug === slug)
+    return book
+      ? PREVIEW_BOOKS.filter(
+          (candidate) =>
+            candidate.id !== book.id && candidate.category === book.category,
+        ).slice(0, limit)
+      : []
+  }
+
+  const params = new URLSearchParams({ limit: String(limit) })
+  const payload = await request<BackendCatalogResponse>(
+    `/books/${encodeURIComponent(slug)}/related?${params.toString()}`,
+  )
+  return (payload.items ?? payload.books ?? []).map(mapBackendBook)
 }
 
 export async function getBookReviews(

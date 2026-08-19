@@ -13,13 +13,13 @@ La réponse détaillée doit fournir au minimum le livre normalisé ou une envel
 
 La réponse avis attendue est de la forme `{ items, total, page, limit, avg_rating }`. Chaque avis peut utiliser `author_name`, `author.name`, `rating`, `comment`, `created_at` et `verified_purchase`. Le formulaire de création envoie `{ rating, comment }` et nécessite une session authentifiée en production.
 
-La réponse titres associés peut utiliser `{ items }` ou `{ books }` dans l’enveloppe catalogue. Les livres associés sont normalisés vers `CatalogBook` et réutilisent le composant `BookCard` du catalogue.
+La réponse titres associés peut utiliser `{ items }` ou `{ books }` dans l’enveloppe catalogue. Si l’enveloppe de `GET /api/v1/books/{slug}` ne contient pas déjà `related`, le service appelle explicitement `GET /api/v1/books/{slug}/related?limit=4`. Les livres associés sont normalisés vers `CatalogBook` et réutilisent le composant `BookCard` du catalogue.
 
 ## Service frontend
 
 `src/features/book-details/book-details.api.ts` sépare explicitement les deux modes. Sans `VITE_API_BASE_URL`, `PREVIEW_BOOKS` fournit le livre, les chapitres, les avis de démonstration et les titres de même catégorie. Avec la variable d’environnement, les requêtes utilisent `/api/v1`, `credentials: "include"` et une erreur lisible en cas de réponse HTTP non valide.
 
-Le hook `useBookDetail` gère le chargement, l’erreur, le rechargement et l’ajout optimiste local d’un avis après le retour du service. La page ne possède pas de logique réseau directe.
+Le hook `useBookDetail` gère le chargement, l’erreur, le rechargement et l’ajout optimiste local d’un avis après le retour du service. La page ne possède pas de logique réseau directe. La page expose en outre un JSON-LD `Book` pour les métadonnées SEO, sans persister de données inventées.
 
 ## Points à confirmer côté backend
 
