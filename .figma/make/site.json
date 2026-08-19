@@ -1,0 +1,11 @@
+{
+  "title": "maquettedusite",
+  "description": "This e-commerce platform offers a seamless experience for francophone African readers to purchase e-books and for authors to self-publish, ensuring fair revenue sharing and local payment options.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}

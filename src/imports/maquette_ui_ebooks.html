@@ -1,0 +1,1574 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Maquette UI — Plateforme E-Books Afrique</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        serif: ['Playfair Display', 'serif'],
+                    },
+                    colors: {
+                        brand: {
+                            50: '#fdf8f6',
+                            100: '#f2e8e5',
+                            200: '#eaddd7',
+                            300: '#e0cec7',
+                            400: '#d2bab0',
+                            500: '#a18072',
+                            600: '#8a6a5c',
+                            700: '#73564a',
+                            800: '#5c453b',
+                            900: '#45332b',
+                        },
+                        african: {
+                            gold: '#D4A017',
+                            terracotta: '#E2725B',
+                            forest: '#2D5A3D',
+                            ocean: '#1B4F72',
+                            sand: '#F5E6CA',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { font-family: 'Inter', sans-serif; background: #f3f4f6; }
+        .page { display: none; animation: fadeIn 0.3s ease-in-out; }
+        .page.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+        .wireframe-box { border: 2px dashed #cbd5e1; background: #f8fafc; display: flex; align-items: center; justify-content: center; color: #64748b; font-size: 0.875rem; }
+        .annotation { position: relative; }
+        .annotation::after { content: attr(data-note); position: absolute; top: -24px; right: 0; background: #1e293b; color: white; font-size: 10px; padding: 2px 8px; border-radius: 4px; opacity: 0; transition: opacity 0.2s; white-space: nowrap; z-index: 50; }
+        .annotation:hover::after { opacity: 1; }
+        .dev-note { background: #fef3c7; border-left: 4px solid #f59e0b; padding: 8px 12px; font-size: 0.8rem; color: #92400e; margin: 8px 0; border-radius: 0 4px 4px 0; }
+        .mock-phone { max-width: 380px; margin: 0 auto; border: 12px solid #1f2937; border-radius: 40px; overflow: hidden; background: white; height: 760px; position: relative; }
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+        .star-rating { color: #fbbf24; }
+        .nav-item.active { background: #fff7ed; color: #c2410c; border-right: 3px solid #c2410c; }
+    </style>
+<base target="_blank">
+</head>
+<body class="bg-gray-100 min-h-screen">
+
+    <!-- HEADER NAVIGATION PROTOTYPE -->
+    <div class="bg-slate-900 text-white p-4 sticky top-0 z-50 shadow-lg">
+        <div class="max-w-7xl mx-auto flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 bg-african-gold rounded-lg flex items-center justify-center font-bold text-slate-900">E</div>
+                <h1 class="font-bold text-lg tracking-tight">Maquette UI — E-Books Afrique <span class="text-slate-400 font-normal text-sm ml-2">v1.0 Cahier des Charges</span></h1>
+            </div>
+            <div class="flex gap-2">
+                <button onclick="setViewport('desktop')" id="btn-desktop" class="px-3 py-1.5 rounded bg-slate-700 hover:bg-slate-600 text-xs font-medium transition">Desktop</button>
+                <button onclick="setViewport('mobile')" id="btn-mobile" class="px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-xs font-medium transition">Mobile</button>
+            </div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="max-w-7xl mx-auto mt-4 flex gap-1 overflow-x-auto scrollbar-hide pb-1">
+            <button onclick="showPage('home')" class="tab-btn px-4 py-2 rounded-t-lg bg-white text-slate-900 text-sm font-semibold whitespace-nowrap" data-tab="home">🏠 Accueil</button>
+            <button onclick="showPage('catalog')" class="tab-btn px-4 py-2 rounded-t-lg bg-slate-800 text-slate-300 text-sm font-medium hover:bg-slate-700 whitespace-nowrap" data-tab="catalog">📚 Catalogue</button>
+            <button onclick="showPage('product')" class="tab-btn px-4 py-2 rounded-t-lg bg-slate-800 text-slate-300 text-sm font-medium hover:bg-slate-700 whitespace-nowrap" data-tab="product">📖 Fiche Produit</button>
+            <button onclick="showPage('cart')" class="tab-btn px-4 py-2 rounded-t-lg bg-slate-800 text-slate-300 text-sm font-medium hover:bg-slate-700 whitespace-nowrap" data-tab="cart">🛒 Panier & Checkout</button>
+            <button onclick="showPage('library')" class="tab-btn px-4 py-2 rounded-t-lg bg-slate-800 text-slate-300 text-sm font-medium hover:bg-slate-700 whitespace-nowrap" data-tab="library">📚 Bibliothèque</button>
+            <button onclick="showPage('reader')" class="tab-btn px-4 py-2 rounded-t-lg bg-slate-800 text-slate-300 text-sm font-medium hover:bg-slate-700 whitespace-nowrap" data-tab="reader">👁️ Lecteur ePub</button>
+            <button onclick="showPage('admin')" class="tab-btn px-4 py-2 rounded-t-lg bg-slate-800 text-slate-300 text-sm font-medium hover:bg-slate-700 whitespace-nowrap" data-tab="admin">⚙️ Admin Dashboard</button>
+            <button onclick="showPage('author')" class="tab-btn px-4 py-2 rounded-t-lg bg-slate-800 text-slate-300 text-sm font-medium hover:bg-slate-700 whitespace-nowrap" data-tab="author">✍️ Portail Auteur</button>
+            <button onclick="showPage('components')" class="tab-btn px-4 py-2 rounded-t-lg bg-slate-800 text-slate-300 text-sm font-medium hover:bg-slate-700 whitespace-nowrap" data-tab="components">🧩 Design System</button>
+        </div>
+    </div>
+
+    <div class="max-w-7xl mx-auto p-6" id="viewport-container">
+
+    <!-- ==================== PAGE ACCUEIL ==================== -->
+    <div id="page-home" class="page active">
+        <div class="dev-note"><strong>Note dev :</strong> Next.js 14 App Router, SSR, ISR 60s. Hero banner via CMS. Sections dynamiques selon profil utilisateur.</div>
+
+        <!-- Header Site -->
+        <div class="bg-white shadow-sm border-b sticky top-0 z-40">
+            <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <div class="w-10 h-10 bg-gradient-to-br from-african-gold to-african-terracotta rounded-xl flex items-center justify-center text-white font-bold text-xl">E</div>
+                    <span class="font-serif text-xl font-bold text-slate-800">Éditions Numériques</span>
+                </div>
+                <div class="hidden md:flex flex-1 max-w-md mx-8">
+                    <div class="w-full relative">
+                        <input type="text" placeholder="Rechercher un livre, un auteur..." class="w-full pl-10 pr-4 py-2.5 bg-slate-100 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-african-gold/50">
+                        <svg class="w-5 h-5 text-slate-400 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                    </div>
+                </div>
+                <div class="flex items-center gap-4">
+                    <button class="relative p-2 hover:bg-slate-100 rounded-full">
+                        <svg class="w-6 h-6 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/></svg>
+                        <span class="absolute top-0 right-0 w-4 h-4 bg-african-terracotta text-white text-[10px] rounded-full flex items-center justify-center">2</span>
+                    </button>
+                    <button class="w-9 h-9 bg-slate-200 rounded-full flex items-center justify-center text-sm font-semibold text-slate-600">JD</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Hero -->
+        <div class="relative bg-gradient-to-r from-slate-900 via-slate-800 to-african-ocean text-white rounded-2xl overflow-hidden mb-8 mt-4">
+            <div class="absolute inset-0 opacity-20" style="background-image: url('data:image/svg+xml,%3Csvg width=\'60\' height=\'60\' viewBox=\'0 0 60 60\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cg fill=\'none\' fill-rule=\'evenodd\'%3E%3Cg fill=\'%23ffffff\' fill-opacity=\'0.15\'%3E%3Cpath d=\'M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z\'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E');"></div>
+            <div class="relative max-w-6xl mx-auto px-6 py-16 md:py-20 flex flex-col md:flex-row items-center gap-8">
+                <div class="flex-1 space-y-6">
+                    <span class="inline-block px-3 py-1 bg-african-gold/20 text-african-gold text-xs font-bold rounded-full uppercase tracking-wider">Nouveauté</span>
+                    <h2 class="font-serif text-4xl md:text-5xl font-bold leading-tight">Les racines de l'Afrique<br><span class="text-african-gold">dans votre poche</span></h2>
+                    <p class="text-slate-300 text-lg max-w-lg">Découvrez notre collection exclusive d'e-books par des auteurs africains francophones. Lisez partout, tout le temps.</p>
+                    <div class="flex gap-3">
+                        <button class="px-6 py-3 bg-african-gold hover:bg-yellow-600 text-slate-900 font-bold rounded-xl transition">Explorer le catalogue</button>
+                        <button class="px-6 py-3 bg-white/10 hover:bg-white/20 text-white font-semibold rounded-xl transition">Devenir auteur</button>
+                    </div>
+                </div>
+                <div class="flex gap-4 transform rotate-[-6deg] hover:rotate-0 transition duration-500">
+                    <div class="w-32 md:w-40 h-48 md:h-56 bg-gradient-to-b from-african-terracotta to-orange-700 rounded-lg shadow-2xl flex items-center justify-center text-white font-serif text-center p-4 border-4 border-white/20">L'Afrique<br>Écrit</div>
+                    <div class="w-32 md:w-40 h-48 md:h-56 bg-gradient-to-b from-african-forest to-emerald-800 rounded-lg shadow-2xl flex items-center justify-center text-white font-serif text-center p-4 border-4 border-white/20 mt-8">Contes du<br>Sahel</div>
+                    <div class="w-32 md:w-40 h-48 md:h-56 bg-gradient-to-b from-african-ocean to-blue-900 rounded-lg shadow-2xl flex items-center justify-center text-white font-serif text-center p-4 border-4 border-white/20">Océan<br>des Mots</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sections -->
+        <div class="max-w-6xl mx-auto space-y-10 px-4 pb-12">
+            <!-- Nouveautés -->
+            <section>
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="font-serif text-2xl font-bold text-slate-800">Nouveautés</h3>
+                    <a href="#" class="text-african-ocean font-medium text-sm hover:underline">Voir tout →</a>
+                </div>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <!-- Book Card -->
+                    <div class="group bg-white rounded-xl shadow-sm hover:shadow-xl transition border border-slate-100 overflow-hidden cursor-pointer">
+                        <div class="aspect-[2/3] bg-gradient-to-br from-slate-200 to-slate-300 relative overflow-hidden">
+                            <div class="absolute inset-0 flex items-center justify-center text-slate-500 font-serif text-center p-4">Couverture<br>HD</div>
+                            <div class="absolute top-2 right-2 bg-white/90 backdrop-blur px-2 py-1 rounded text-xs font-bold text-african-terracotta">-20%</div>
+                        </div>
+                        <div class="p-4">
+                            <h4 class="font-semibold text-slate-800 text-sm line-clamp-2 mb-1">Le Cœur de l'Afrique</h4>
+                            <p class="text-xs text-slate-500 mb-2">Amadou K.</p>
+                            <div class="flex items-center gap-1 mb-2">
+                                <span class="star-rating text-xs">★★★★☆</span>
+                                <span class="text-xs text-slate-400">(12)</span>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <span class="font-bold text-slate-900">2 500 FCFA</span>
+                                <button class="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center hover:bg-african-gold hover:text-white transition">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Repeat 3 more -->
+                    <div class="group bg-white rounded-xl shadow-sm hover:shadow-xl transition border border-slate-100 overflow-hidden cursor-pointer">
+                        <div class="aspect-[2/3] bg-gradient-to-br from-amber-100 to-amber-200 relative"><div class="absolute inset-0 flex items-center justify-center text-amber-800 font-serif text-center p-4">Soleils<br>Levant</div></div>
+                        <div class="p-4">
+                            <h4 class="font-semibold text-slate-800 text-sm line-clamp-2 mb-1">Soleils Levant</h4>
+                            <p class="text-xs text-slate-500 mb-2">Fatou D.</p>
+                            <div class="flex items-center gap-1 mb-2"><span class="star-rating text-xs">★★★★★</span><span class="text-xs text-slate-400">(28)</span></div>
+                            <div class="flex items-center justify-between"><span class="font-bold text-slate-900">3 000 FCFA</span><button class="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center hover:bg-african-gold hover:text-white transition"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg></button></div>
+                        </div>
+                    </div>
+                    <div class="group bg-white rounded-xl shadow-sm hover:shadow-xl transition border border-slate-100 overflow-hidden cursor-pointer">
+                        <div class="aspect-[2/3] bg-gradient-to-br from-emerald-100 to-emerald-200 relative"><div class="absolute inset-0 flex items-center justify-center text-emerald-800 font-serif text-center p-4">Forêt<br>Sacrée</div></div>
+                        <div class="p-4">
+                            <h4 class="font-semibold text-slate-800 text-sm line-clamp-2 mb-1">Forêt Sacrée</h4>
+                            <p class="text-xs text-slate-500 mb-2">Koffi M.</p>
+                            <div class="flex items-center gap-1 mb-2"><span class="star-rating text-xs">★★★★☆</span><span class="text-xs text-slate-400">(8)</span></div>
+                            <div class="flex items-center justify-between"><span class="font-bold text-slate-900">1 800 FCFA</span><button class="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center hover:bg-african-gold hover:text-white transition"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg></button></div>
+                        </div>
+                    </div>
+                    <div class="group bg-white rounded-xl shadow-sm hover:shadow-xl transition border border-slate-100 overflow-hidden cursor-pointer">
+                        <div class="aspect-[2/3] bg-gradient-to-br from-blue-100 to-blue-200 relative"><div class="absolute inset-0 flex items-center justify-center text-blue-800 font-serif text-center p-4">Rivière<br>Bleue</div></div>
+                        <div class="p-4">
+                            <h4 class="font-semibold text-slate-800 text-sm line-clamp-2 mb-1">Rivière Bleue</h4>
+                            <p class="text-xs text-slate-500 mb-2">Aïcha N.</p>
+                            <div class="flex items-center gap-1 mb-2"><span class="star-rating text-xs">★★★☆☆</span><span class="text-xs text-slate-400">(5)</span></div>
+                            <div class="flex items-center justify-between"><span class="font-bold text-slate-900">2 200 FCFA</span><button class="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center hover:bg-african-gold hover:text-white transition"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg></button></div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Best Sellers -->
+            <section>
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="font-serif text-2xl font-bold text-slate-800">Best-sellers du mois</h3>
+                </div>
+                <div class="bg-white rounded-xl border border-slate-200 p-6">
+                    <div class="space-y-4">
+                        <div class="flex items-center gap-4 p-3 hover:bg-slate-50 rounded-lg transition cursor-pointer">
+                            <span class="text-2xl font-bold text-slate-300 w-8">1</span>
+                            <div class="w-12 h-16 bg-gradient-to-br from-purple-100 to-purple-200 rounded flex-shrink-0"></div>
+                            <div class="flex-1">
+                                <h4 class="font-semibold text-slate-800">L'Enfant de la Rue</h4>
+                                <p class="text-sm text-slate-500">Marie K. • Roman</p>
+                            </div>
+                            <div class="text-right">
+                                <div class="font-bold text-slate-900">4 500 FCFA</div>
+                                <div class="text-xs text-green-600 font-medium">+124 ventes</div>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-4 p-3 hover:bg-slate-50 rounded-lg transition cursor-pointer">
+                            <span class="text-2xl font-bold text-slate-300 w-8">2</span>
+                            <div class="w-12 h-16 bg-gradient-to-br from-orange-100 to-orange-200 rounded flex-shrink-0"></div>
+                            <div class="flex-1">
+                                <h4 class="font-semibold text-slate-800">Mémoires d'Abidjan</h4>
+                                <p class="text-sm text-slate-500">Jean-Paul A. • Essai</p>
+                            </div>
+                            <div class="text-right">
+                                <div class="font-bold text-slate-900">3 200 FCFA</div>
+                                <div class="text-xs text-green-600 font-medium">+98 ventes</div>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-4 p-3 hover:bg-slate-50 rounded-lg transition cursor-pointer">
+                            <span class="text-2xl font-bold text-slate-300 w-8">3</span>
+                            <div class="w-12 h-16 bg-gradient-to-br from-teal-100 to-teal-200 rounded flex-shrink-0"></div>
+                            <div class="flex-1">
+                                <h4 class="font-semibold text-slate-800">Contes du Sahel</h4>
+                                <p class="text-sm text-slate-500">Ibrahim S. • Contes</p>
+                            </div>
+                            <div class="text-right">
+                                <div class="font-bold text-slate-900">1 500 FCFA</div>
+                                <div class="text-xs text-green-600 font-medium">+87 ventes</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Catégories -->
+            <section>
+                <h3 class="font-serif text-2xl font-bold text-slate-800 mb-4">Catégories populaires</h3>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div class="bg-gradient-to-br from-purple-500 to-indigo-600 rounded-xl p-6 text-white hover:shadow-lg transition cursor-pointer">
+                        <div class="text-3xl mb-2">📚</div>
+                        <div class="font-bold">Romans</div>
+                        <div class="text-sm opacity-80">142 livres</div>
+                    </div>
+                    <div class="bg-gradient-to-br from-orange-500 to-red-500 rounded-xl p-6 text-white hover:shadow-lg transition cursor-pointer">
+                        <div class="text-3xl mb-2">🎭</div>
+                        <div class="font-bold">Théâtre</div>
+                        <div class="text-sm opacity-80">38 livres</div>
+                    </div>
+                    <div class="bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl p-6 text-white hover:shadow-lg transition cursor-pointer">
+                        <div class="text-3xl mb-2">🎓</div>
+                        <div class="font-bold">Éducation</div>
+                        <div class="text-sm opacity-80">95 livres</div>
+                    </div>
+                    <div class="bg-gradient-to-br from-blue-500 to-cyan-600 rounded-xl p-6 text-white hover:shadow-lg transition cursor-pointer">
+                        <div class="text-3xl mb-2">👶</div>
+                        <div class="font-bold">Jeunesse</div>
+                        <div class="text-sm opacity-80">67 livres</div>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <!-- Footer -->
+        <div class="bg-slate-900 text-slate-300 py-12 mt-8 rounded-t-2xl">
+            <div class="max-w-6xl mx-auto px-4 grid md:grid-cols-4 gap-8">
+                <div>
+                    <div class="flex items-center gap-2 mb-4">
+                        <div class="w-8 h-8 bg-african-gold rounded-lg flex items-center justify-center font-bold text-slate-900">E</div>
+                        <span class="font-serif text-lg font-bold text-white">Éditions Numériques</span>
+                    </div>
+                    <p class="text-sm text-slate-400">La plateforme de référence pour les e-books africains francophones.</p>
+                </div>
+                <div>
+                    <h4 class="text-white font-semibold mb-3">Navigation</h4>
+                    <ul class="space-y-2 text-sm">
+                        <li><a href="#" class="hover:text-white">Catalogue</a></li>
+                        <li><a href="#" class="hover:text-white">Best-sellers</a></li>
+                        <li><a href="#" class="hover:text-white">Nouveautés</a></li>
+                        <li><a href="#" class="hover:text-white">Auteurs</a></li>
+                    </ul>
+                </div>
+                <div>
+                    <h4 class="text-white font-semibold mb-3">Aide</h4>
+                    <ul class="space-y-2 text-sm">
+                        <li><a href="#" class="hover:text-white">Comment ça marche</a></li>
+                        <li><a href="#" class="hover:text-white">FAQ</a></li>
+                        <li><a href="#" class="hover:text-white">Contact</a></li>
+                        <li><a href="#" class="hover:text-white">CGV</a></li>
+                    </ul>
+                </div>
+                <div>
+                    <h4 class="text-white font-semibold mb-3">Newsletter</h4>
+                    <div class="flex gap-2">
+                        <input type="email" placeholder="Votre email" class="flex-1 px-3 py-2 bg-slate-800 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-african-gold">
+                        <button class="px-4 py-2 bg-african-gold text-slate-900 font-bold rounded-lg text-sm">OK</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== PAGE CATALOGUE ==================== -->
+    <div id="page-catalog" class="page">
+        <div class="dev-note"><strong>Note dev :</strong> Pagination infinie (cursor-based), filtres côté serveur, index GIN PostgreSQL pour recherche full-text. Facettes dynamiques.</div>
+
+        <div class="bg-white shadow-sm border-b mb-6">
+            <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <div class="w-10 h-10 bg-gradient-to-br from-african-gold to-african-terracotta rounded-xl flex items-center justify-center text-white font-bold text-xl">E</div>
+                    <span class="font-serif text-xl font-bold text-slate-800">Éditions Numériques</span>
+                </div>
+                <div class="flex items-center gap-4">
+                    <button class="relative p-2 hover:bg-slate-100 rounded-full">
+                        <svg class="w-6 h-6 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/></svg>
+                        <span class="absolute top-0 right-0 w-4 h-4 bg-african-terracotta text-white text-[10px] rounded-full flex items-center justify-center">2</span>
+                    </button>
+                    <button class="w-9 h-9 bg-slate-200 rounded-full flex items-center justify-center text-sm font-semibold text-slate-600">JD</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="max-w-6xl mx-auto px-4 pb-12 flex gap-6">
+            <!-- Sidebar Filtres -->
+            <aside class="w-64 flex-shrink-0 hidden md:block">
+                <div class="bg-white rounded-xl border border-slate-200 p-5 sticky top-24">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="font-bold text-slate-800">Filtres</h3>
+                        <button class="text-xs text-african-ocean hover:underline">Réinitialiser</button>
+                    </div>
+
+                    <div class="space-y-6">
+                        <div>
+                            <h4 class="text-sm font-semibold text-slate-700 mb-2">Catégories</h4>
+                            <div class="space-y-2">
+                                <label class="flex items-center gap-2 text-sm text-slate-600 cursor-pointer"><input type="checkbox" class="rounded text-african-gold"> Romans <span class="text-slate-400 text-xs">(142)</span></label>
+                                <label class="flex items-center gap-2 text-sm text-slate-600 cursor-pointer"><input type="checkbox" class="rounded text-african-gold"> Essais <span class="text-slate-400 text-xs">(56)</span></label>
+                                <label class="flex items-center gap-2 text-sm text-slate-600 cursor-pointer"><input type="checkbox" class="rounded text-african-gold"> Poésie <span class="text-slate-400 text-xs">(34)</span></label>
+                                <label class="flex items-center gap-2 text-sm text-slate-600 cursor-pointer"><input type="checkbox" class="rounded text-african-gold"> Jeunesse <span class="text-slate-400 text-xs">(67)</span></label>
+                            </div>
+                        </div>
+                        <div>
+                            <h4 class="text-sm font-semibold text-slate-700 mb-2">Prix (FCFA)</h4>
+                            <div class="flex items-center gap-2">
+                                <input type="number" placeholder="Min" class="w-full px-3 py-2 border rounded-lg text-sm">
+                                <span class="text-slate-400">-</span>
+                                <input type="number" placeholder="Max" class="w-full px-3 py-2 border rounded-lg text-sm">
+                            </div>
+                        </div>
+                        <div>
+                            <h4 class="text-sm font-semibold text-slate-700 mb-2">Note</h4>
+                            <div class="space-y-1">
+                                <label class="flex items-center gap-2 text-sm cursor-pointer"><input type="radio" name="rating" class="text-african-gold"> <span class="star-rating">★★★★★</span> <span class="text-slate-500 text-xs">& Up</span></label>
+                                <label class="flex items-center gap-2 text-sm cursor-pointer"><input type="radio" name="rating" class="text-african-gold"> <span class="star-rating">★★★★☆</span> <span class="text-slate-500 text-xs">& Up</span></label>
+                                <label class="flex items-center gap-2 text-sm cursor-pointer"><input type="radio" name="rating" class="text-african-gold"> <span class="star-rating">★★★☆☆</span> <span class="text-slate-500 text-xs">& Up</span></label>
+                            </div>
+                        </div>
+                        <div>
+                            <h4 class="text-sm font-semibold text-slate-700 mb-2">Langue</h4>
+                            <select class="w-full px-3 py-2 border rounded-lg text-sm">
+                                <option>Toutes les langues</option>
+                                <option>Français</option>
+                                <option>Anglais</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- Main Content -->
+            <div class="flex-1">
+                <!-- Search & Sort -->
+                <div class="bg-white rounded-xl border border-slate-200 p-4 mb-6 flex flex-col md:flex-row gap-4 items-center justify-between">
+                    <div class="relative w-full md:max-w-md">
+                        <input type="text" value="amour" class="w-full pl-10 pr-4 py-2.5 bg-slate-50 rounded-lg text-sm border focus:outline-none focus:ring-2 focus:ring-african-gold/50">
+                        <svg class="w-5 h-5 text-slate-400 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                    </div>
+                    <div class="flex items-center gap-3 w-full md:w-auto">
+                        <span class="text-sm text-slate-500 whitespace-nowrap">248 résultats</span>
+                        <select class="px-3 py-2 border rounded-lg text-sm bg-white">
+                            <option>Pertinence</option>
+                            <option>Prix croissant</option>
+                            <option>Prix décroissant</option>
+                            <option>Date</option>
+                            <option>Popularité</option>
+                        </select>
+                        <div class="flex border rounded-lg overflow-hidden">
+                            <button class="p-2 bg-slate-100 text-slate-600"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg></button>
+                            <button class="p-2 bg-white text-slate-400"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Breadcrumbs -->
+                <div class="flex items-center gap-2 text-sm text-slate-500 mb-4">
+                    <span>Accueil</span>
+                    <span>/</span>
+                    <span>Catalogue</span>
+                    <span>/</span>
+                    <span class="text-slate-800 font-medium">Recherche "amour"</span>
+                </div>
+
+                <!-- Grid -->
+                <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
+                    <!-- Cards (repeat 6) -->
+                    <div class="group bg-white rounded-xl shadow-sm hover:shadow-xl transition border border-slate-100 overflow-hidden cursor-pointer">
+                        <div class="aspect-[2/3] bg-gradient-to-br from-rose-100 to-rose-200 relative"><div class="absolute inset-0 flex items-center justify-center text-rose-800 font-serif text-center p-4 text-sm">Amour en<br>Temps de<br>Guerre</div></div>
+                        <div class="p-4">
+                            <h4 class="font-semibold text-slate-800 text-sm line-clamp-2 mb-1">Amour en Temps de Guerre</h4>
+                            <p class="text-xs text-slate-500 mb-2">Aminata D.</p>
+                            <div class="flex items-center gap-1 mb-2"><span class="star-rating text-xs">★★★★★</span><span class="text-xs text-slate-400">(45)</span></div>
+                            <div class="flex items-center justify-between"><span class="font-bold text-slate-900">3 500 FCFA</span><button class="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center hover:bg-african-gold hover:text-white transition"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg></button></div>
+                        </div>
+                    </div>
+                    <div class="group bg-white rounded-xl shadow-sm hover:shadow-xl transition border border-slate-100 overflow-hidden cursor-pointer">
+                        <div class="aspect-[2/3] bg-gradient-to-br from-violet-100 to-violet-200 relative"><div class="absolute inset-0 flex items-center justify-center text-violet-800 font-serif text-center p-4 text-sm">Les Amants<br>de<br>Bamako</div></div>
+                        <div class="p-4">
+                            <h4 class="font-semibold text-slate-800 text-sm line-clamp-2 mb-1">Les Amants de Bamako</h4>
+                            <p class="text-xs text-slate-500 mb-2">Kassim T.</p>
+                            <div class="flex items-center gap-1 mb-2"><span class="star-rating text-xs">★★★★☆</span><span class="text-xs text-slate-400">(23)</span></div>
+                            <div class="flex items-center justify-between"><span class="font-bold text-slate-900">2 800 FCFA</span><button class="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center hover:bg-african-gold hover:text-white transition"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg></button></div>
+                        </div>
+                    </div>
+                    <div class="group bg-white rounded-xl shadow-sm hover:shadow-xl transition border border-slate-100 overflow-hidden cursor-pointer">
+                        <div class="aspect-[2/3] bg-gradient-to-br from-amber-100 to-amber-200 relative"><div class="absolute inset-0 flex items-center justify-center text-amber-800 font-serif text-center p-4 text-sm">Cœur<br>Africain</div></div>
+                        <div class="p-4">
+                            <h4 class="font-semibold text-slate-800 text-sm line-clamp-2 mb-1">Cœur Africain</h4>
+                            <p class="text-xs text-slate-500 mb-2">Sophie L.</p>
+                            <div class="flex items-center gap-1 mb-2"><span class="star-rating text-xs">★★★★★</span><span class="text-xs text-slate-400">(67)</span></div>
+                            <div class="flex items-center justify-between"><span class="font-bold text-slate-900">4 000 FCFA</span><button class="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center hover:bg-african-gold hover:text-white transition"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg></button></div>
+                        </div>
+                    </div>
+                    <div class="group bg-white rounded-xl shadow-sm hover:shadow-xl transition border border-slate-100 overflow-hidden cursor-pointer">
+                        <div class="aspect-[2/3] bg-gradient-to-br from-cyan-100 to-cyan-200 relative"><div class="absolute inset-0 flex items-center justify-center text-cyan-800 font-serif text-center p-4 text-sm">L'Océan<br>de nos<br>Amours</div></div>
+                        <div class="p-4">
+                            <h4 class="font-semibold text-slate-800 text-sm line-clamp-2 mb-1">L'Océan de nos Amours</h4>
+                            <p class="text-xs text-slate-500 mb-2">Jean M.</p>
+                            <div class="flex items-center gap-1 mb-2"><span class="star-rating text-xs">★★★☆☆</span><span class="text-xs text-slate-400">(12)</span></div>
+                            <div class="flex items-center justify-between"><span class="font-bold text-slate-900">1 500 FCFA</span><button class="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center hover:bg-african-gold hover:text-white transition"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg></button></div>
+                        </div>
+                    </div>
+                    <div class="group bg-white rounded-xl shadow-sm hover:shadow-xl transition border border-slate-100 overflow-hidden cursor-pointer">
+                        <div class="aspect-[2/3] bg-gradient-to-br from-pink-100 to-pink-200 relative"><div class="absolute inset-0 flex items-center justify-center text-pink-800 font-serif text-center p-4 text-sm">Passion<br>Sahélienne</div></div>
+                        <div class="p-4">
+                            <h4 class="font-semibold text-slate-800 text-sm line-clamp-2 mb-1">Passion Sahélienne</h4>
+                            <p class="text-xs text-slate-500 mb-2">Hawa D.</p>
+                            <div class="flex items-center gap-1 mb-2"><span class="star-rating text-xs">★★★★☆</span><span class="text-xs text-slate-400">(34)</span></div>
+                            <div class="flex items-center justify-between"><span class="font-bold text-slate-900">2 200 FCFA</span><button class="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center hover:bg-african-gold hover:text-white transition"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg></button></div>
+                        </div>
+                    </div>
+                    <div class="group bg-white rounded-xl shadow-sm hover:shadow-xl transition border border-slate-100 overflow-hidden cursor-pointer">
+                        <div class="aspect-[2/3] bg-gradient-to-br from-indigo-100 to-indigo-200 relative"><div class="absolute inset-0 flex items-center justify-center text-indigo-800 font-serif text-center p-4 text-sm">Romeo &<br>Juliette<br>à Dakar</div></div>
+                        <div class="p-4">
+                            <h4 class="font-semibold text-slate-800 text-sm line-clamp-2 mb-1">Romeo & Juliette à Dakar</h4>
+                            <p class="text-xs text-slate-500 mb-2">Omar F.</p>
+                            <div class="flex items-center gap-1 mb-2"><span class="star-rating text-xs">★★★★★</span><span class="text-xs text-slate-400">(89)</span></div>
+                            <div class="flex items-center justify-between"><span class="font-bold text-slate-900">3 200 FCFA</span><button class="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center hover:bg-african-gold hover:text-white transition"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg></button></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Pagination -->
+                <div class="flex justify-center mt-8">
+                    <div class="flex gap-2">
+                        <button class="px-4 py-2 border rounded-lg text-sm text-slate-500 hover:bg-slate-50">Précédent</button>
+                        <button class="px-4 py-2 bg-african-ocean text-white rounded-lg text-sm font-medium">1</button>
+                        <button class="px-4 py-2 border rounded-lg text-sm text-slate-600 hover:bg-slate-50">2</button>
+                        <button class="px-4 py-2 border rounded-lg text-sm text-slate-600 hover:bg-slate-50">3</button>
+                        <span class="px-2 py-2 text-slate-400">...</span>
+                        <button class="px-4 py-2 border rounded-lg text-sm text-slate-600 hover:bg-slate-50">12</button>
+                        <button class="px-4 py-2 border rounded-lg text-sm text-slate-500 hover:bg-slate-50">Suivant</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== PAGE FICHE PRODUIT ==================== -->
+    <div id="page-product" class="page">
+        <div class="dev-note"><strong>Note dev :</strong> Schema.org Book JSON-LD, meta OG, URLs signées pour couverture HD. Zoom couverture au survol (hover). Partage social natif (Web Share API) + fallback WhatsApp/Facebook.</div>
+
+        <div class="bg-white shadow-sm border-b mb-6">
+            <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <div class="w-10 h-10 bg-gradient-to-br from-african-gold to-african-terracotta rounded-xl flex items-center justify-center text-white font-bold text-xl">E</div>
+                </div>
+                <div class="flex items-center gap-4">
+                    <button class="relative p-2 hover:bg-slate-100 rounded-full"><svg class="w-6 h-6 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/></svg></button>
+                </div>
+            </div>
+        </div>
+
+        <div class="max-w-6xl mx-auto px-4 pb-12">
+            <!-- Breadcrumbs -->
+            <div class="flex items-center gap-2 text-sm text-slate-500 mb-6">
+                <span>Accueil</span><span>/</span><span>Romans</span><span>/</span><span class="text-slate-800 font-medium">Le Cœur de l'Afrique</span>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-8 mb-10">
+                <!-- Cover -->
+                <div class="space-y-4">
+                    <div class="aspect-[2/3] max-w-sm mx-auto bg-gradient-to-br from-slate-200 to-slate-300 rounded-2xl shadow-2xl flex items-center justify-center text-slate-600 font-serif text-2xl text-center p-8 relative group cursor-zoom-in">
+                        Le Cœur<br>de l'Afrique
+                        <div class="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition rounded-2xl"></div>
+                    </div>
+                    <div class="flex justify-center gap-2">
+                        <div class="w-16 h-20 bg-slate-200 rounded border-2 border-african-gold cursor-pointer"></div>
+                        <div class="w-16 h-20 bg-slate-100 rounded border border-slate-200 cursor-pointer opacity-60"></div>
+                        <div class="w-16 h-20 bg-slate-100 rounded border border-slate-200 cursor-pointer opacity-60"></div>
+                    </div>
+                </div>
+
+                <!-- Info -->
+                <div class="space-y-6">
+                    <div>
+                        <div class="flex items-center gap-2 mb-2">
+                            <span class="px-2 py-1 bg-green-100 text-green-700 text-xs font-bold rounded">Disponible</span>
+                            <span class="px-2 py-1 bg-african-gold/10 text-african-gold text-xs font-bold rounded">Best-seller</span>
+                        </div>
+                        <h1 class="font-serif text-3xl md:text-4xl font-bold text-slate-900 mb-2">Le Cœur de l'Afrique</h1>
+                        <p class="text-lg text-slate-600 mb-3">Un voyage épique à travers les traditions et les défis du continent</p>
+                        <a href="#" class="text-african-ocean font-medium hover:underline">Amadou K.</a>
+                    </div>
+
+                    <div class="flex items-center gap-4">
+                        <div class="flex items-center gap-1">
+                            <span class="star-rating text-lg">★★★★</span><span class="star-rating text-lg text-slate-300">★</span>
+                            <span class="ml-2 text-sm text-slate-600 font-medium">4.2</span>
+                        </div>
+                        <span class="text-slate-400">|</span>
+                        <span class="text-sm text-slate-500">128 avis</span>
+                        <span class="text-slate-400">|</span>
+                        <span class="text-sm text-slate-500">342 ventes</span>
+                    </div>
+
+                    <div class="bg-slate-50 rounded-xl p-6 border border-slate-200">
+                        <div class="flex items-baseline gap-3 mb-4">
+                            <span class="text-4xl font-bold text-slate-900">2 500 FCFA</span>
+                            <span class="text-lg text-slate-400 line-through">3 200 FCFA</span>
+                            <span class="px-2 py-1 bg-african-terracotta text-white text-xs font-bold rounded">-22%</span>
+                        </div>
+                        <div class="flex gap-3">
+                            <button class="flex-1 py-3.5 bg-african-gold hover:bg-yellow-600 text-slate-900 font-bold rounded-xl transition flex items-center justify-center gap-2">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/></svg>
+                                Acheter maintenant
+                            </button>
+                            <button class="px-4 py-3.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold rounded-xl transition">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/></svg>
+                            </button>
+                        </div>
+                        <p class="text-xs text-slate-500 mt-3 text-center">Paiement sécurisé par Mobile Money • Téléchargement immédiat</p>
+                    </div>
+
+                    <!-- Meta -->
+                    <div class="grid grid-cols-2 gap-4 text-sm">
+                        <div class="flex justify-between py-2 border-b border-slate-100"><span class="text-slate-500">Format</span><span class="font-medium">ePub 3</span></div>
+                        <div class="flex justify-between py-2 border-b border-slate-100"><span class="text-slate-500">Pages</span><span class="font-medium">324</span></div>
+                        <div class="flex justify-between py-2 border-b border-slate-100"><span class="text-slate-500">Langue</span><span class="font-medium">Français</span></div>
+                        <div class="flex justify-between py-2 border-b border-slate-100"><span class="text-slate-500">ISBN</span><span class="font-medium">978-2-1234-5678</span></div>
+                        <div class="flex justify-between py-2 border-b border-slate-100"><span class="text-slate-500">Publié</span><span class="font-medium">15 Mars 2026</span></div>
+                        <div class="flex justify-between py-2 border-b border-slate-100"><span class="text-slate-500">Catégorie</span><span class="font-medium">Roman</span></div>
+                    </div>
+
+                    <!-- Share -->
+                    <div class="flex items-center gap-3">
+                        <span class="text-sm text-slate-600 font-medium">Partager :</span>
+                        <button class="w-9 h-9 bg-green-500 rounded-full flex items-center justify-center text-white hover:scale-110 transition"><svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg></button>
+                        <button class="w-9 h-9 bg-blue-600 rounded-full flex items-center justify-center text-white hover:scale-110 transition"><svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg></button>
+                        <button class="w-9 h-9 bg-slate-900 rounded-full flex items-center justify-center text-white hover:scale-110 transition"><svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg></button>
+                        <button class="w-9 h-9 bg-slate-200 rounded-full flex items-center justify-center text-slate-600 hover:scale-110 transition"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg></button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tabs -->
+            <div class="border-b border-slate-200 mb-6">
+                <div class="flex gap-6">
+                    <button class="pb-3 border-b-2 border-african-gold text-slate-900 font-semibold text-sm">Description</button>
+                    <button class="pb-3 border-b-2 border-transparent text-slate-500 hover:text-slate-700 font-medium text-sm">Avis (128)</button>
+                    <button class="pb-3 border-b-2 border-transparent text-slate-500 hover:text-slate-700 font-medium text-sm">Du même auteur</button>
+                </div>
+            </div>
+
+            <div class="grid md:grid-cols-3 gap-8">
+                <div class="md:col-span-2 space-y-4 text-slate-700 leading-relaxed">
+                    <p>Plongez dans une épopée saisissante qui traverse les grandes traditions africaines, des savanes du Sahel aux métropoles côtières. Amadou K. nous offre un récit poignant sur l'identité, l'amour et la résilience.</p>
+                    <p>Ce roman, lauréat du Prix littéraire de l'Afrique francophone 2025, a déjà conquis plus de 10 000 lecteurs à travers le monde. Une histoire qui vous hante longtemps après la dernière page.</p>
+                    <h3 class="font-bold text-slate-900 mt-6 mb-2">Détails</h3>
+                    <ul class="list-disc list-inside space-y-1 text-sm text-slate-600">
+                        <li>Format ePub 3 compatible tous lecteurs</li>
+                        <li>Table des matières interactive</li>
+                        <li>Extrait gratuit : 3 premiers chapitres</li>
+                        <li>DRM-free (sans protection)</li>
+                    </ul>
+                </div>
+                <div class="bg-slate-50 rounded-xl p-5 border border-slate-200 h-fit">
+                    <h3 class="font-bold text-slate-800 mb-3">Tags</h3>
+                    <div class="flex flex-wrap gap-2">
+                        <span class="px-3 py-1 bg-white border border-slate-200 rounded-full text-xs text-slate-600">#roman</span>
+                        <span class="px-3 py-1 bg-white border border-slate-200 rounded-full text-xs text-slate-600">#afrique</span>
+                        <span class="px-3 py-1 bg-white border border-slate-200 rounded-full text-xs text-slate-600">#culture</span>
+                        <span class="px-3 py-1 bg-white border border-slate-200 rounded-full text-xs text-slate-600">#tradition</span>
+                        <span class="px-3 py-1 bg-white border border-slate-200 rounded-full text-xs text-slate-600">#litterature</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== PAGE PANIER & CHECKOUT ==================== -->
+    <div id="page-cart" class="page">
+        <div class="dev-note"><strong>Note dev :</strong> Panier persistant localStorage (invité) + sync API si auth. Checkout multi-étapes avec validation Zod. Webhook Mobile Money async + polling fallback.</div>
+
+        <div class="max-w-4xl mx-auto px-4 py-8">
+            <h2 class="font-serif text-3xl font-bold text-slate-900 mb-8">Finaliser votre commande</h2>
+
+            <!-- Steps -->
+            <div class="flex items-center mb-10">
+                <div class="flex items-center gap-2">
+                    <div class="w-8 h-8 bg-african-gold text-slate-900 rounded-full flex items-center justify-center font-bold text-sm">1</div>
+                    <span class="font-medium text-slate-900 text-sm">Panier</span>
+                </div>
+                <div class="w-12 h-0.5 bg-slate-300 mx-2"></div>
+                <div class="flex items-center gap-2">
+                    <div class="w-8 h-8 bg-slate-200 text-slate-500 rounded-full flex items-center justify-center font-bold text-sm">2</div>
+                    <span class="font-medium text-slate-500 text-sm">Informations</span>
+                </div>
+                <div class="w-12 h-0.5 bg-slate-300 mx-2"></div>
+                <div class="flex items-center gap-2">
+                    <div class="w-8 h-8 bg-slate-200 text-slate-500 rounded-full flex items-center justify-center font-bold text-sm">3</div>
+                    <span class="font-medium text-slate-500 text-sm">Paiement</span>
+                </div>
+                <div class="w-12 h-0.5 bg-slate-300 mx-2"></div>
+                <div class="flex items-center gap-2">
+                    <div class="w-8 h-8 bg-slate-200 text-slate-500 rounded-full flex items-center justify-center font-bold text-sm">4</div>
+                    <span class="font-medium text-slate-500 text-sm">Confirmation</span>
+                </div>
+            </div>
+
+            <div class="grid md:grid-cols-3 gap-8">
+                <!-- Cart Items -->
+                <div class="md:col-span-2 space-y-4">
+                    <div class="bg-white rounded-xl border border-slate-200 p-4 flex gap-4">
+                        <div class="w-20 h-28 bg-gradient-to-br from-slate-200 to-slate-300 rounded-lg flex-shrink-0 flex items-center justify-center text-xs text-slate-500 font-serif text-center">Cœur<br>Afrique</div>
+                        <div class="flex-1">
+                            <h3 class="font-semibold text-slate-800">Le Cœur de l'Afrique</h3>
+                            <p class="text-sm text-slate-500 mb-2">Amadou K. • ePub</p>
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center border rounded-lg">
+                                    <button class="px-3 py-1 text-slate-600 hover:bg-slate-100">-</button>
+                                    <span class="px-3 py-1 text-sm font-medium">1</span>
+                                    <button class="px-3 py-1 text-slate-600 hover:bg-slate-100">+</button>
+                                </div>
+                                <span class="font-bold text-slate-900">2 500 FCFA</span>
+                            </div>
+                        </div>
+                        <button class="text-slate-400 hover:text-red-500"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
+                    </div>
+                    <div class="bg-white rounded-xl border border-slate-200 p-4 flex gap-4">
+                        <div class="w-20 h-28 bg-gradient-to-br from-amber-100 to-amber-200 rounded-lg flex-shrink-0 flex items-center justify-center text-xs text-amber-800 font-serif text-center">Soleils<br>Levant</div>
+                        <div class="flex-1">
+                            <h3 class="font-semibold text-slate-800">Soleils Levant</h3>
+                            <p class="text-sm text-slate-500 mb-2">Fatou D. • ePub</p>
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center border rounded-lg">
+                                    <button class="px-3 py-1 text-slate-600 hover:bg-slate-100">-</button>
+                                    <span class="px-3 py-1 text-sm font-medium">1</span>
+                                    <button class="px-3 py-1 text-slate-600 hover:bg-slate-100">+</button>
+                                </div>
+                                <span class="font-bold text-slate-900">3 000 FCFA</span>
+                            </div>
+                        </div>
+                        <button class="text-slate-400 hover:text-red-500"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
+                    </div>
+
+                    <!-- Coupon -->
+                    <div class="bg-white rounded-xl border border-slate-200 p-4">
+                        <label class="text-sm font-medium text-slate-700 mb-2 block">Code promo</label>
+                        <div class="flex gap-2">
+                            <input type="text" placeholder="Entrez votre code" class="flex-1 px-4 py-2.5 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-african-gold/50">
+                            <button class="px-6 py-2.5 bg-slate-800 text-white font-medium rounded-lg text-sm hover:bg-slate-700">Appliquer</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Summary -->
+                <div class="bg-white rounded-xl border border-slate-200 p-6 h-fit sticky top-24">
+                    <h3 class="font-bold text-slate-800 mb-4">Récapitulatif</h3>
+                    <div class="space-y-3 text-sm mb-4">
+                        <div class="flex justify-between text-slate-600"><span>Sous-total (2 articles)</span><span>5 500 FCFA</span></div>
+                        <div class="flex justify-between text-green-600"><span>Réduction BIENVENUE</span><span>-550 FCFA</span></div>
+                        <div class="flex justify-between text-slate-600"><span>Frais de service</span><span>0 FCFA</span></div>
+                    </div>
+                    <div class="border-t pt-4 mb-6">
+                        <div class="flex justify-between items-baseline">
+                            <span class="font-bold text-slate-800">Total</span>
+                            <span class="text-2xl font-bold text-slate-900">4 950 FCFA</span>
+                        </div>
+                        <p class="text-xs text-slate-500 mt-1 text-right">~7.55 EUR</p>
+                    </div>
+                    <button class="w-full py-3.5 bg-african-gold hover:bg-yellow-600 text-slate-900 font-bold rounded-xl transition mb-3">Passer la commande</button>
+                    <div class="flex justify-center gap-3 opacity-60">
+                        <div class="w-8 h-5 bg-slate-300 rounded"></div>
+                        <div class="w-8 h-5 bg-slate-300 rounded"></div>
+                        <div class="w-8 h-5 bg-slate-300 rounded"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Payment Step Preview -->
+            <div class="mt-12 border-t pt-8">
+                <h3 class="font-bold text-slate-800 mb-4">Étape 3 : Paiement Mobile Money (aperçu)</h3>
+                <div class="bg-white rounded-xl border border-slate-200 p-6 max-w-lg">
+                    <div class="space-y-4">
+                        <div>
+                            <label class="text-sm font-medium text-slate-700 mb-2 block">Opérateur</label>
+                            <div class="grid grid-cols-3 gap-3">
+                                <button class="p-3 border-2 border-african-gold bg-orange-50 rounded-xl flex flex-col items-center gap-2">
+                                    <div class="w-8 h-8 bg-orange-500 rounded-full"></div>
+                                    <span class="text-xs font-medium">Orange Money</span>
+                                </button>
+                                <button class="p-3 border border-slate-200 rounded-xl flex flex-col items-center gap-2 opacity-60">
+                                    <div class="w-8 h-8 bg-yellow-500 rounded-full"></div>
+                                    <span class="text-xs font-medium">MTN MoMo</span>
+                                </button>
+                                <button class="p-3 border border-slate-200 rounded-xl flex flex-col items-center gap-2 opacity-60">
+                                    <div class="w-8 h-8 bg-blue-500 rounded-full"></div>
+                                    <span class="text-xs font-medium">Wave</span>
+                                </button>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="text-sm font-medium text-slate-700 mb-2 block">Numéro de téléphone</label>
+                            <input type="tel" value="+225 07 XX XX XX XX" class="w-full px-4 py-3 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-african-gold/50">
+                        </div>
+                        <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-800">
+                            <p class="font-medium mb-1">Instructions :</p>
+                            <p>Vous allez recevoir une notification sur votre téléphone. Validez le paiement en saisissant votre code PIN.</p>
+                        </div>
+                        <button class="w-full py-3.5 bg-african-gold hover:bg-yellow-600 text-slate-900 font-bold rounded-xl transition">Payer 4 950 FCFA</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== PAGE BIBLIOTHÈQUE ==================== -->
+    <div id="page-library" class="page">
+        <div class="dev-note"><strong>Note dev :</strong> URLs signées AWS/R2 (15min, 5 downloads max). Lecteur ePub intégré via EPUB.js. Sync position lecture (API + localStorage fallback). PWA + Service Worker pour offline.</div>
+
+        <div class="bg-white shadow-sm border-b mb-6">
+            <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <div class="w-10 h-10 bg-gradient-to-br from-african-gold to-african-terracotta rounded-xl flex items-center justify-center text-white font-bold text-xl">E</div>
+                    <span class="font-serif text-xl font-bold text-slate-800">Éditions Numériques</span>
+                </div>
+                <div class="flex items-center gap-4">
+                    <button class="w-9 h-9 bg-slate-200 rounded-full flex items-center justify-center text-sm font-semibold text-slate-600">JD</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="max-w-6xl mx-auto px-4 pb-12">
+            <div class="flex items-center justify-between mb-6">
+                <div>
+                    <h2 class="font-serif text-3xl font-bold text-slate-900">Ma Bibliothèque</h2>
+                    <p class="text-slate-500">12 livres achetés • Dernière lecture : il y a 2h</p>
+                </div>
+                <div class="flex gap-2">
+                    <button class="px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50">📚 Grille</button>
+                    <button class="px-4 py-2 bg-slate-100 rounded-lg text-sm font-medium text-slate-600">☰ Liste</button>
+                </div>
+            </div>
+
+            <!-- Stats Cards -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+                <div class="bg-white rounded-xl border border-slate-200 p-4">
+                    <div class="text-2xl font-bold text-slate-900">12</div>
+                    <div class="text-sm text-slate-500">Livres achetés</div>
+                </div>
+                <div class="bg-white rounded-xl border border-slate-200 p-4">
+                    <div class="text-2xl font-bold text-slate-900">3</div>
+                    <div class="text-sm text-slate-500">En cours de lecture</div>
+                </div>
+                <div class="bg-white rounded-xl border border-slate-200 p-4">
+                    <div class="text-2xl font-bold text-slate-900">8</div>
+                    <div class="text-sm text-slate-500">Lus entièrement</div>
+                </div>
+                <div class="bg-white rounded-xl border border-slate-200 p-4">
+                    <div class="text-2xl font-bold text-slate-900">47 500</div>
+                    <div class="text-sm text-slate-500">FCFA dépensés</div>
+                </div>
+            </div>
+
+            <!-- Books Grid -->
+            <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                <div class="bg-white rounded-xl border border-slate-200 overflow-hidden group hover:shadow-lg transition">
+                    <div class="aspect-[2/3] bg-gradient-to-br from-slate-200 to-slate-300 relative">
+                        <div class="absolute inset-0 flex items-center justify-center text-slate-600 font-serif text-center p-4 text-sm">Le Cœur<br>de l'Afrique</div>
+                        <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-3">
+                            <div class="w-full bg-white/20 rounded-full h-1.5">
+                                <div class="bg-african-gold h-1.5 rounded-full" style="width: 65%"></div>
+                            </div>
+                            <div class="text-white text-xs mt-1">65% lu</div>
+                        </div>
+                    </div>
+                    <div class="p-3">
+                        <h4 class="font-semibold text-sm text-slate-800 truncate">Le Cœur de l'Afrique</h4>
+                        <p class="text-xs text-slate-500">Amadou K.</p>
+                        <div class="flex gap-2 mt-3">
+                            <button class="flex-1 py-1.5 bg-african-ocean text-white text-xs font-medium rounded-lg hover:bg-blue-800 transition">Lire</button>
+                            <button class="px-2 py-1.5 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition" title="Télécharger (3/5 restants)">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-white rounded-xl border border-slate-200 overflow-hidden group hover:shadow-lg transition">
+                    <div class="aspect-[2/3] bg-gradient-to-br from-amber-100 to-amber-200 relative">
+                        <div class="absolute inset-0 flex items-center justify-center text-amber-800 font-serif text-center p-4 text-sm">Soleils<br>Levant</div>
+                        <div class="absolute top-2 right-2 bg-green-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">TERMINÉ</div>
+                    </div>
+                    <div class="p-3">
+                        <h4 class="font-semibold text-sm text-slate-800 truncate">Soleils Levant</h4>
+                        <p class="text-xs text-slate-500">Fatou D.</p>
+                        <div class="flex gap-2 mt-3">
+                            <button class="flex-1 py-1.5 bg-slate-100 text-slate-700 text-xs font-medium rounded-lg hover:bg-slate-200 transition">Relire</button>
+                            <button class="px-2 py-1.5 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-white rounded-xl border border-slate-200 overflow-hidden group hover:shadow-lg transition">
+                    <div class="aspect-[2/3] bg-gradient-to-br from-emerald-100 to-emerald-200 relative">
+                        <div class="absolute inset-0 flex items-center justify-center text-emerald-800 font-serif text-center p-4 text-sm">Forêt<br>Sacrée</div>
+                        <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-3">
+                            <div class="w-full bg-white/20 rounded-full h-1.5">
+                                <div class="bg-african-gold h-1.5 rounded-full" style="width: 12%"></div>
+                            </div>
+                            <div class="text-white text-xs mt-1">12% lu</div>
+                        </div>
+                    </div>
+                    <div class="p-3">
+                        <h4 class="font-semibold text-sm text-slate-800 truncate">Forêt Sacrée</h4>
+                        <p class="text-xs text-slate-500">Koffi M.</p>
+                        <div class="flex gap-2 mt-3">
+                            <button class="flex-1 py-1.5 bg-african-ocean text-white text-xs font-medium rounded-lg hover:bg-blue-800 transition">Lire</button>
+                            <button class="px-2 py-1.5 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-white rounded-xl border border-slate-200 overflow-hidden group hover:shadow-lg transition">
+                    <div class="aspect-[2/3] bg-gradient-to-br from-blue-100 to-blue-200 relative">
+                        <div class="absolute inset-0 flex items-center justify-center text-blue-800 font-serif text-center p-4 text-sm">Rivière<br>Bleue</div>
+                    </div>
+                    <div class="p-3">
+                        <h4 class="font-semibold text-sm text-slate-800 truncate">Rivière Bleue</h4>
+                        <p class="text-xs text-slate-500">Aïcha N.</p>
+                        <div class="flex gap-2 mt-3">
+                            <button class="flex-1 py-1.5 bg-african-ocean text-white text-xs font-medium rounded-lg hover:bg-blue-800 transition">Lire</button>
+                            <button class="px-2 py-1.5 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Orders History -->
+            <div class="mt-12">
+                <h3 class="font-bold text-slate-800 mb-4">Historique des commandes</h3>
+                <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                    <table class="w-full text-sm">
+                        <thead class="bg-slate-50">
+                            <tr>
+                                <th class="text-left px-4 py-3 font-medium text-slate-600">N° Commande</th>
+                                <th class="text-left px-4 py-3 font-medium text-slate-600">Date</th>
+                                <th class="text-left px-4 py-3 font-medium text-slate-600">Articles</th>
+                                <th class="text-left px-4 py-3 font-medium text-slate-600">Total</th>
+                                <th class="text-left px-4 py-3 font-medium text-slate-600">Statut</th>
+                                <th class="text-right px-4 py-3 font-medium text-slate-600">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100">
+                            <tr class="hover:bg-slate-50">
+                                <td class="px-4 py-3 font-mono text-slate-600">#ORD-2026-0042</td>
+                                <td class="px-4 py-3 text-slate-600">04 Juil. 2026</td>
+                                <td class="px-4 py-3 text-slate-600">2 livres</td>
+                                <td class="px-4 py-3 font-medium">4 950 FCFA</td>
+                                <td class="px-4 py-3"><span class="px-2 py-1 bg-green-100 text-green-700 text-xs font-bold rounded">Payée</span></td>
+                                <td class="px-4 py-3 text-right"><button class="text-african-ocean hover:underline text-xs">Facture PDF</button></td>
+                            </tr>
+                            <tr class="hover:bg-slate-50">
+                                <td class="px-4 py-3 font-mono text-slate-600">#ORD-2026-0038</td>
+                                <td class="px-4 py-3 text-slate-600">28 Juin 2026</td>
+                                <td class="px-4 py-3 text-slate-600">1 livre</td>
+                                <td class="px-4 py-3 font-medium">2 500 FCFA</td>
+                                <td class="px-4 py-3"><span class="px-2 py-1 bg-green-100 text-green-700 text-xs font-bold rounded">Payée</span></td>
+                                <td class="px-4 py-3 text-right"><button class="text-african-ocean hover:underline text-xs">Facture PDF</button></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== PAGE LECTEUR EPUB ==================== -->
+    <div id="page-reader" class="page">
+        <div class="dev-note"><strong>Note dev :</strong> EPUB.js v3 + rendu via blob URL signée. Pas de stockage local du fichier complet (streaming CFI). Thèmes clair/sépia/sombre. Synchro position API (debounce 5s). Mode hors ligne : cache Service Worker des blobs.</div>
+
+        <div class="bg-slate-900 text-white h-screen flex flex-col">
+            <!-- Reader Toolbar -->
+            <div class="flex items-center justify-between px-4 py-3 bg-slate-800 border-b border-slate-700">
+                <div class="flex items-center gap-4">
+                    <button class="p-2 hover:bg-slate-700 rounded-lg"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/></svg></button>
+                    <div>
+                        <h3 class="font-medium text-sm">Le Cœur de l'Afrique</h3>
+                        <p class="text-xs text-slate-400">Amadou K. • Chapitre 4 sur 12</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button class="p-2 hover:bg-slate-700 rounded-lg" title="Marque-page"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"/></svg></button>
+                    <button class="p-2 hover:bg-slate-700 rounded-lg" title="Annotations"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"/></svg></button>
+                    <button class="p-2 hover:bg-slate-700 rounded-lg" title="Paramètres"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg></button>
+                    <button class="p-2 hover:bg-slate-700 rounded-lg" title="Plein écran"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg></button>
+                </div>
+            </div>
+
+            <!-- Reader Content Mock -->
+            <div class="flex-1 flex">
+                <!-- Sidebar TOC -->
+                <div class="w-64 bg-slate-800 border-r border-slate-700 hidden md:block p-4">
+                    <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Table des matières</h4>
+                    <div class="space-y-1 text-sm">
+                        <div class="px-3 py-2 rounded text-slate-400 hover:text-white hover:bg-slate-700 cursor-pointer">Introduction</div>
+                        <div class="px-3 py-2 rounded text-slate-400 hover:text-white hover:bg-slate-700 cursor-pointer">Chapitre 1</div>
+                        <div class="px-3 py-2 rounded text-slate-400 hover:text-white hover:bg-slate-700 cursor-pointer">Chapitre 2</div>
+                        <div class="px-3 py-2 rounded text-slate-400 hover:text-white hover:bg-slate-700 cursor-pointer">Chapitre 3</div>
+                        <div class="px-3 py-2 rounded bg-slate-700 text-african-gold font-medium cursor-pointer">Chapitre 4</div>
+                        <div class="px-3 py-2 rounded text-slate-400 hover:text-white hover:bg-slate-700 cursor-pointer">Chapitre 5</div>
+                        <div class="px-3 py-2 rounded text-slate-400 hover:text-white hover:bg-slate-700 cursor-pointer">Chapitre 6</div>
+                    </div>
+                </div>
+
+                <!-- Page Content -->
+                <div class="flex-1 bg-white text-slate-800 p-8 md:p-16 overflow-y-auto relative">
+                    <div class="max-w-2xl mx-auto space-y-6 font-serif text-lg leading-relaxed">
+                        <h2 class="text-3xl font-bold mb-8">Chapitre 4 : Les vents du changement</h2>
+                        <p>Le soleil se couchait lentement sur les collines de Ouagadougou, teintant le ciel d'une palette de couleurs que seule l'Afrique semblait pouvoir offrir. Aïcha se tenait sur le seuil de la maison familiale, les yeux perdus vers l'horizon où le jour cédait sa place à une nuit étoilée.</p>
+                        <p>— Tu hésites encore, murmura sa grand-mère en s'approchant avec cette démarche lente et digne qui caractérisait les femmes de leur lignée.</p>
+                        <p>Aïcha ne répondit pas immédiatement. Comment expliquer ce tumulte intérieur ? Ce besoin de partir et cette peur irrationnelle d'abandonner ses racines ?</p>
+                        <p>— Le baobab ne grandit pas sans ses racines, poursuivit l'aïeule, mais ses branches, elles, doivent toucher le ciel.</p>
+                        <p>Cette métaphore simple résonna en Aïcha comme une évidence. Elle comprit alors que partir n'était pas trahir, mais plutôt porter l'histoire de son peuple vers de nouveaux horizons.</p>
+                        <p>La nuit tomba, enveloppant les deux femmes d'un manteau de douceur. Au loin, les tambours annonçaient une cérémonie, rythmant le silence de leurs pensées respectives.</p>
+                    </div>
+
+                    <!-- Progress Bar Bottom -->
+                    <div class="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 px-4 py-2 flex items-center gap-4">
+                        <span class="text-xs text-slate-500 w-16">32%</span>
+                        <div class="flex-1 bg-slate-200 rounded-full h-1.5">
+                            <div class="bg-african-gold h-1.5 rounded-full" style="width: 32%"></div>
+                        </div>
+                        <span class="text-xs text-slate-500 w-20 text-right">p. 104/324</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Settings Panel (overlay mock) -->
+            <div class="absolute top-14 right-4 w-72 bg-white rounded-xl shadow-2xl border border-slate-200 p-5 text-slate-800 z-50">
+                <h4 class="font-bold mb-4">Paramètres de lecture</h4>
+                <div class="space-y-4">
+                    <div>
+                        <label class="text-xs font-medium text-slate-500 mb-2 block">Thème</label>
+                        <div class="flex gap-2">
+                            <button class="flex-1 py-2 bg-white border-2 border-african-gold rounded-lg text-xs font-medium">Clair</button>
+                            <button class="flex-1 py-2 bg-amber-50 border border-slate-200 rounded-lg text-xs font-medium">Sépia</button>
+                            <button class="flex-1 py-2 bg-slate-800 border border-slate-200 rounded-lg text-xs font-medium text-white">Sombre</button>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="text-xs font-medium text-slate-500 mb-2 block">Taille police</label>
+                        <div class="flex items-center gap-3">
+                            <span class="text-sm">A</span>
+                            <input type="range" class="flex-1" min="12" max="24" value="18">
+                            <span class="text-lg">A</span>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="text-xs font-medium text-slate-500 mb-2 block">Interligne</label>
+                        <div class="flex gap-2">
+                            <button class="flex-1 py-1.5 border rounded-lg text-xs">1.0</button>
+                            <button class="flex-1 py-1.5 border-2 border-african-gold rounded-lg text-xs font-medium">1.5</button>
+                            <button class="flex-1 py-1.5 border rounded-lg text-xs">2.0</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== PAGE ADMIN DASHBOARD ==================== -->
+    <div id="page-admin" class="page">
+        <div class="dev-note"><strong>Note dev :</strong> Dashboard admin avec données agrégées (Redis cache 5min). Graphiques via Recharts/D3. Export CSV/PDF côté serveur (Celery). 2FA obligatoire. Journal d'audit complet (table audit_logs).</div>
+
+        <div class="flex h-screen bg-slate-100">
+            <!-- Sidebar -->
+            <aside class="w-64 bg-slate-900 text-slate-300 flex flex-col">
+                <div class="p-5 border-b border-slate-800">
+                    <div class="flex items-center gap-2">
+                        <div class="w-8 h-8 bg-african-gold rounded-lg flex items-center justify-center font-bold text-slate-900">E</div>
+                        <span class="font-bold text-white">Admin</span>
+                    </div>
+                </div>
+                <nav class="flex-1 p-3 space-y-1">
+                    <a href="#" class="nav-item active flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg> Dashboard</a>
+                    <a href="#" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium hover:bg-slate-800"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg> Catalogue</a>
+                    <a href="#" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium hover:bg-slate-800"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/></svg> Commandes</a>
+                    <a href="#" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium hover:bg-slate-800"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg> Clients</a>
+                    <a href="#" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium hover:bg-slate-800"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z"/></svg> Avis</a>
+                    <a href="#" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium hover:bg-slate-800"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg> Rapports</a>
+                    <a href="#" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium hover:bg-slate-800"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg> Paramètres</a>
+                </nav>
+                <div class="p-4 border-t border-slate-800">
+                    <div class="flex items-center gap-3">
+                        <div class="w-9 h-9 bg-slate-700 rounded-full flex items-center justify-center text-sm font-bold">SA</div>
+                        <div>
+                            <div class="text-sm font-medium text-white">Super Admin</div>
+                            <div class="text-xs text-slate-500">admin@plateforme.com</div>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- Main -->
+            <div class="flex-1 overflow-y-auto">
+                <div class="p-8">
+                    <div class="flex items-center justify-between mb-8">
+                        <div>
+                            <h1 class="text-2xl font-bold text-slate-900">Tableau de bord</h1>
+                            <p class="text-slate-500">Aperçu en temps réel de l'activité</p>
+                        </div>
+                        <div class="flex gap-3">
+                            <button class="px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50">Aujourd'hui</button>
+                            <button class="px-4 py-2 bg-african-ocean text-white rounded-lg text-sm font-medium hover:bg-blue-800">Exporter</button>
+                        </div>
+                    </div>
+
+                    <!-- KPI Cards -->
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+                        <div class="bg-white rounded-xl border border-slate-200 p-5">
+                            <div class="flex items-center justify-between mb-3">
+                                <span class="text-sm text-slate-500">Ventes aujourd'hui</span>
+                                <span class="text-xs text-green-600 bg-green-50 px-2 py-1 rounded-full font-medium">+12%</span>
+                            </div>
+                            <div class="text-3xl font-bold text-slate-900">24</div>
+                            <div class="text-sm text-slate-400 mt-1">62 500 FCFA</div>
+                        </div>
+                        <div class="bg-white rounded-xl border border-slate-200 p-5">
+                            <div class="flex items-center justify-between mb-3">
+                                <span class="text-sm text-slate-500">Revenus du mois</span>
+                                <span class="text-xs text-green-600 bg-green-50 px-2 py-1 rounded-full font-medium">+8%</span>
+                            </div>
+                            <div class="text-3xl font-bold text-slate-900">1.2M</div>
+                            <div class="text-sm text-slate-400 mt-1">FCFA</div>
+                        </div>
+                        <div class="bg-white rounded-xl border border-slate-200 p-5">
+                            <div class="flex items-center justify-between mb-3">
+                                <span class="text-sm text-slate-500">Nouveaux clients</span>
+                                <span class="text-xs text-green-600 bg-green-50 px-2 py-1 rounded-full font-medium">+24%</span>
+                            </div>
+                            <div class="text-3xl font-bold text-slate-900">148</div>
+                            <div class="text-sm text-slate-400 mt-1">Ce mois</div>
+                        </div>
+                        <div class="bg-white rounded-xl border border-slate-200 p-5">
+                            <div class="flex items-center justify-between mb-3">
+                                <span class="text-sm text-slate-500">Panier moyen</span>
+                                <span class="text-xs text-red-600 bg-red-50 px-2 py-1 rounded-full font-medium">-3%</span>
+                            </div>
+                            <div class="text-3xl font-bold text-slate-900">2 800</div>
+                            <div class="text-sm text-slate-400 mt-1">FCFA</div>
+                        </div>
+                    </div>
+
+                    <!-- Charts Row -->
+                    <div class="grid md:grid-cols-2 gap-6 mb-8">
+                        <div class="bg-white rounded-xl border border-slate-200 p-6">
+                            <h3 class="font-bold text-slate-800 mb-4">Courbe de ventes (30 jours)</h3>
+                            <div class="h-48 flex items-end gap-2">
+                                <div class="flex-1 bg-blue-100 rounded-t hover:bg-blue-200 transition relative group" style="height: 40%"><div class="absolute -top-8 left-1/2 -translate-x-1/2 bg-slate-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100">12</div></div>
+                                <div class="flex-1 bg-blue-100 rounded-t hover:bg-blue-200 transition relative group" style="height: 65%"><div class="absolute -top-8 left-1/2 -translate-x-1/2 bg-slate-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100">18</div></div>
+                                <div class="flex-1 bg-blue-100 rounded-t hover:bg-blue-200 transition relative group" style="height: 50%"><div class="absolute -top-8 left-1/2 -translate-x-1/2 bg-slate-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100">15</div></div>
+                                <div class="flex-1 bg-blue-100 rounded-t hover:bg-blue-200 transition relative group" style="height: 80%"><div class="absolute -top-8 left-1/2 -translate-x-1/2 bg-slate-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100">24</div></div>
+                                <div class="flex-1 bg-blue-100 rounded-t hover:bg-blue-200 transition relative group" style="height: 55%"><div class="absolute -top-8 left-1/2 -translate-x-1/2 bg-slate-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100">16</div></div>
+                                <div class="flex-1 bg-blue-100 rounded-t hover:bg-blue-200 transition relative group" style="height: 90%"><div class="absolute -top-8 left-1/2 -translate-x-1/2 bg-slate-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100">28</div></div>
+                                <div class="flex-1 bg-blue-100 rounded-t hover:bg-blue-200 transition relative group" style="height: 70%"><div class="absolute -top-8 left-1/2 -translate-x-1/2 bg-slate-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100">21</div></div>
+                                <div class="flex-1 bg-african-gold rounded-t hover:bg-yellow-500 transition relative group" style="height: 100%"><div class="absolute -top-8 left-1/2 -translate-x-1/2 bg-slate-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100">32</div></div>
+                            </div>
+                            <div class="flex justify-between mt-2 text-xs text-slate-400">
+                                <span>J-7</span><span>J-6</span><span>J-5</span><span>J-4</span><span>J-3</span><span>J-2</span><span>Hier</span><span class="font-bold text-slate-600">Auj.</span>
+                            </div>
+                        </div>
+                        <div class="bg-white rounded-xl border border-slate-200 p-6">
+                            <h3 class="font-bold text-slate-800 mb-4">Répartition par catégorie</h3>
+                            <div class="space-y-4">
+                                <div>
+                                    <div class="flex justify-between text-sm mb-1"><span>Romans</span><span class="font-medium">45%</span></div>
+                                    <div class="w-full bg-slate-100 rounded-full h-2"><div class="bg-blue-500 h-2 rounded-full" style="width: 45%"></div></div>
+                                </div>
+                                <div>
+                                    <div class="flex justify-between text-sm mb-1"><span>Essais</span><span class="font-medium">25%</span></div>
+                                    <div class="w-full bg-slate-100 rounded-full h-2"><div class="bg-green-500 h-2 rounded-full" style="width: 25%"></div></div>
+                                </div>
+                                <div>
+                                    <div class="flex justify-between text-sm mb-1"><span>Jeunesse</span><span class="font-medium">18%</span></div>
+                                    <div class="w-full bg-slate-100 rounded-full h-2"><div class="bg-yellow-500 h-2 rounded-full" style="width: 18%"></div></div>
+                                </div>
+                                <div>
+                                    <div class="flex justify-between text-sm mb-1"><span>Poésie</span><span class="font-medium">12%</span></div>
+                                    <div class="w-full bg-slate-100 rounded-full h-2"><div class="bg-purple-500 h-2 rounded-full" style="width: 12%"></div></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Recent Orders -->
+                    <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                        <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+                            <h3 class="font-bold text-slate-800">Commandes récentes</h3>
+                            <a href="#" class="text-sm text-african-ocean hover:underline">Voir tout</a>
+                        </div>
+                        <table class="w-full text-sm">
+                            <thead class="bg-slate-50">
+                                <tr>
+                                    <th class="text-left px-6 py-3 font-medium text-slate-600">N°</th>
+                                    <th class="text-left px-6 py-3 font-medium text-slate-600">Client</th>
+                                    <th class="text-left px-6 py-3 font-medium text-slate-600">Livres</th>
+                                    <th class="text-left px-6 py-3 font-medium text-slate-600">Montant</th>
+                                    <th class="text-left px-6 py-3 font-medium text-slate-600">Statut</th>
+                                    <th class="text-right px-6 py-3 font-medium text-slate-600">Date</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100">
+                                <tr class="hover:bg-slate-50">
+                                    <td class="px-6 py-3 font-mono text-slate-600">#0042</td>
+                                    <td class="px-6 py-3">Jean Dupont</td>
+                                    <td class="px-6 py-3">2</td>
+                                    <td class="px-6 py-3 font-medium">4 950 FCFA</td>
+                                    <td class="px-6 py-3"><span class="px-2 py-1 bg-green-100 text-green-700 text-xs font-bold rounded">Payée</span></td>
+                                    <td class="px-6 py-3 text-right text-slate-500">Il y a 5 min</td>
+                                </tr>
+                                <tr class="hover:bg-slate-50">
+                                    <td class="px-6 py-3 font-mono text-slate-600">#0041</td>
+                                    <td class="px-6 py-3">Marie K.</td>
+                                    <td class="px-6 py-3">1</td>
+                                    <td class="px-6 py-3 font-medium">3 200 FCFA</td>
+                                    <td class="px-6 py-3"><span class="px-2 py-1 bg-yellow-100 text-yellow-700 text-xs font-bold rounded">En attente</span></td>
+                                    <td class="px-6 py-3 text-right text-slate-500">Il y a 12 min</td>
+                                </tr>
+                                <tr class="hover:bg-slate-50">
+                                    <td class="px-6 py-3 font-mono text-slate-600">#0040</td>
+                                    <td class="px-6 py-3">Ibrahim S.</td>
+                                    <td class="px-6 py-3">3</td>
+                                    <td class="px-6 py-3 font-medium">7 500 FCFA</td>
+                                    <td class="px-6 py-3"><span class="px-2 py-1 bg-green-100 text-green-700 text-xs font-bold rounded">Payée</span></td>
+                                    <td class="px-6 py-3 text-right text-slate-500">Il y a 28 min</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== PAGE PORTAIL AUTEUR ==================== -->
+    <div id="page-author" class="page">
+        <div class="dev-note"><strong>Note dev :</strong> Portail auteur Phase 2. Dashboard inspiré Kobo Writing Life. WebSocket temps réel pour notifications ventes. Upload chunked ePub/couverture. epubcheck + extraction métadonnées côté serveur (Celery). Calcul revenus 70/30.</div>
+
+        <div class="flex h-screen bg-slate-100">
+            <!-- Sidebar -->
+            <aside class="w-64 bg-white border-r border-slate-200 flex flex-col">
+                <div class="p-5 border-b border-slate-100">
+                    <div class="flex items-center gap-3">
+                        <div class="w-12 h-12 bg-gradient-to-br from-african-gold to-african-terracotta rounded-full flex items-center justify-center text-white font-bold text-lg">AK</div>
+                        <div>
+                            <div class="font-bold text-slate-800">Amadou K.</div>
+                            <div class="text-xs text-slate-500">Auteur vérifié</div>
+                        </div>
+                    </div>
+                </div>
+                <nav class="flex-1 p-3 space-y-1">
+                    <a href="#" class="nav-item active flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg> Dashboard</a>
+                    <a href="#" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium hover:bg-slate-50 text-slate-600"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg> Mes livres</a>
+                    <a href="#" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium hover:bg-slate-50 text-slate-600"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg> Statistiques</a>
+                    <a href="#" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium hover:bg-slate-50 text-slate-600"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg> Revenus</a>
+                    <a href="#" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium hover:bg-slate-50 text-slate-600"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg> Notifications <span class="ml-auto bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full">3</span></a>
+                </nav>
+            </aside>
+
+            <!-- Main -->
+            <div class="flex-1 overflow-y-auto">
+                <div class="p-8">
+                    <!-- Notifications Banner -->
+                    <div class="bg-gradient-to-r from-african-gold/20 to-african-terracotta/20 border border-african-gold/30 rounded-xl p-4 mb-6 flex items-center gap-3">
+                        <div class="w-10 h-10 bg-african-gold rounded-full flex items-center justify-center text-white">💰</div>
+                        <div class="flex-1">
+                            <p class="font-medium text-slate-800">Nouveau paiement effectué !</p>
+                            <p class="text-sm text-slate-600">Votre paiement de <strong>175 000 FCFA</strong> (période Juin 2026) a été transféré sur votre compte.</p>
+                        </div>
+                        <button class="text-slate-400 hover:text-slate-600"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
+                    </div>
+
+                    <div class="flex items-center justify-between mb-8">
+                        <div>
+                            <h1 class="text-2xl font-bold text-slate-900">Bonjour, Amadou !</h1>
+                            <p class="text-slate-500">Voici l'activité de vos publications</p>
+                        </div>
+                        <button class="px-4 py-2 bg-african-gold text-slate-900 font-bold rounded-lg hover:bg-yellow-600 transition flex items-center gap-2">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                            Nouveau livre
+                        </button>
+                    </div>
+
+                    <!-- KPIs -->
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+                        <div class="bg-white rounded-xl border border-slate-200 p-5">
+                            <div class="text-sm text-slate-500 mb-1">Ventes aujourd'hui</div>
+                            <div class="text-3xl font-bold text-slate-900">8</div>
+                            <div class="text-xs text-green-600 mt-1">+3 vs hier</div>
+                        </div>
+                        <div class="bg-white rounded-xl border border-slate-200 p-5">
+                            <div class="text-sm text-slate-500 mb-1">Revenus ce mois (net)</div>
+                            <div class="text-3xl font-bold text-slate-900">142K</div>
+                            <div class="text-xs text-slate-400 mt-1">FCFA (70%)</div>
+                        </div>
+                        <div class="bg-white rounded-xl border border-slate-200 p-5">
+                            <div class="text-sm text-slate-500 mb-1">Livres publiés</div>
+                            <div class="text-3xl font-bold text-slate-900">3</div>
+                            <div class="text-xs text-slate-400 mt-1">1 en attente</div>
+                        </div>
+                        <div class="bg-white rounded-xl border border-slate-200 p-5">
+                            <div class="text-sm text-slate-500 mb-1">Note moyenne</div>
+                            <div class="text-3xl font-bold text-slate-900">4.6</div>
+                            <div class="text-xs text-slate-400 mt-1">sur 5 étoiles</div>
+                        </div>
+                    </div>
+
+                    <!-- Chart + Top Books -->
+                    <div class="grid md:grid-cols-3 gap-6 mb-8">
+                        <div class="md:col-span-2 bg-white rounded-xl border border-slate-200 p-6">
+                            <h3 class="font-bold text-slate-800 mb-4">Ventes sur les 30 derniers jours</h3>
+                            <div class="h-56 flex items-end gap-1">
+                                <div class="flex-1 bg-slate-100 rounded-t hover:bg-african-gold/50 transition" style="height: 30%"></div>
+                                <div class="flex-1 bg-slate-100 rounded-t hover:bg-african-gold/50 transition" style="height: 45%"></div>
+                                <div class="flex-1 bg-slate-100 rounded-t hover:bg-african-gold/50 transition" style="height: 60%"></div>
+                                <div class="flex-1 bg-slate-100 rounded-t hover:bg-african-gold/50 transition" style="height: 40%"></div>
+                                <div class="flex-1 bg-slate-100 rounded-t hover:bg-african-gold/50 transition" style="height: 75%"></div>
+                                <div class="flex-1 bg-slate-100 rounded-t hover:bg-african-gold/50 transition" style="height: 55%"></div>
+                                <div class="flex-1 bg-slate-100 rounded-t hover:bg-african-gold/50 transition" style="height: 80%"></div>
+                                <div class="flex-1 bg-slate-100 rounded-t hover:bg-african-gold/50 transition" style="height: 65%"></div>
+                                <div class="flex-1 bg-slate-100 rounded-t hover:bg-african-gold/50 transition" style="height: 90%"></div>
+                                <div class="flex-1 bg-slate-100 rounded-t hover:bg-african-gold/50 transition" style="height: 70%"></div>
+                                <div class="flex-1 bg-slate-100 rounded-t hover:bg-african-gold/50 transition" style="height: 85%"></div>
+                                <div class="flex-1 bg-african-gold rounded-t hover:bg-yellow-500 transition" style="height: 100%"></div>
+                            </div>
+                        </div>
+                        <div class="bg-white rounded-xl border border-slate-200 p-6">
+                            <h3 class="font-bold text-slate-800 mb-4">Top livres ce mois</h3>
+                            <div class="space-y-4">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-10 h-14 bg-gradient-to-br from-slate-200 to-slate-300 rounded flex-shrink-0"></div>
+                                    <div class="flex-1 min-w-0">
+                                        <div class="font-medium text-sm text-slate-800 truncate">Le Cœur de l'Afrique</div>
+                                        <div class="text-xs text-slate-500">142 ventes</div>
+                                    </div>
+                                    <div class="font-bold text-sm">98K</div>
+                                </div>
+                                <div class="flex items-center gap-3">
+                                    <div class="w-10 h-14 bg-gradient-to-br from-amber-100 to-amber-200 rounded flex-shrink-0"></div>
+                                    <div class="flex-1 min-w-0">
+                                        <div class="font-medium text-sm text-slate-800 truncate">Soleils Levant</div>
+                                        <div class="text-xs text-slate-500">67 ventes</div>
+                                    </div>
+                                    <div class="font-bold text-sm">44K</div>
+                                </div>
+                                <div class="flex items-center gap-3">
+                                    <div class="w-10 h-14 bg-gradient-to-br from-emerald-100 to-emerald-200 rounded flex-shrink-0"></div>
+                                    <div class="flex-1 min-w-0">
+                                        <div class="font-medium text-sm text-slate-800 truncate">Forêt Sacrée</div>
+                                        <div class="text-xs text-slate-500">34 ventes</div>
+                                    </div>
+                                    <div class="font-bold text-sm">0</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Recent Sales Table -->
+                    <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                        <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+                            <h3 class="font-bold text-slate-800">Dernières ventes</h3>
+                            <button class="text-sm text-african-ocean hover:underline">Exporter CSV</button>
+                        </div>
+                        <table class="w-full text-sm">
+                            <thead class="bg-slate-50">
+                                <tr>
+                                    <th class="text-left px-6 py-3 font-medium text-slate-600">Date</th>
+                                    <th class="text-left px-6 py-3 font-medium text-slate-600">Livre</th>
+                                    <th class="text-left px-6 py-3 font-medium text-slate-600">Pays</th>
+                                    <th class="text-left px-6 py-3 font-medium text-slate-600">Prix</th>
+                                    <th class="text-left px-6 py-3 font-medium text-slate-600">Net (70%)</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100">
+                                <tr class="hover:bg-slate-50">
+                                    <td class="px-6 py-3 text-slate-600">04 Juil. 14:32</td>
+                                    <td class="px-6 py-3 font-medium">Le Cœur de l'Afrique</td>
+                                    <td class="px-6 py-3"><span class="text-xs">🇨🇮 Côte d'Ivoire</span></td>
+                                    <td class="px-6 py-3">2 500 FCFA</td>
+                                    <td class="px-6 py-3 text-green-600 font-medium">1 750 FCFA</td>
+                                </tr>
+                                <tr class="hover:bg-slate-50">
+                                    <td class="px-6 py-3 text-slate-600">04 Juil. 12:15</td>
+                                    <td class="px-6 py-3 font-medium">Le Cœur de l'Afrique</td>
+                                    <td class="px-6 py-3"><span class="text-xs">🇸🇳 Sénégal</span></td>
+                                    <td class="px-6 py-3">2 500 FCFA</td>
+                                    <td class="px-6 py-3 text-green-600 font-medium">1 750 FCFA</td>
+                                </tr>
+                                <tr class="hover:bg-slate-50">
+                                    <td class="px-6 py-3 text-slate-600">04 Juil. 09:45</td>
+                                    <td class="px-6 py-3 font-medium">Soleils Levant</td>
+                                    <td class="px-6 py-3"><span class="text-xs">🇨🇲 Cameroun</span></td>
+                                    <td class="px-6 py-3">3 000 FCFA</td>
+                                    <td class="px-6 py-3 text-green-600 font-medium">2 100 FCFA</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== PAGE DESIGN SYSTEM ==================== -->
+    <div id="page-components" class="page">
+        <div class="max-w-5xl mx-auto px-4 py-8">
+            <h2 class="font-serif text-3xl font-bold text-slate-900 mb-2">Design System</h2>
+            <p class="text-slate-500 mb-8">Spécifications visuelles pour l'équipe de développement — Tailwind CSS + shadcn/ui</p>
+
+            <div class="grid md:grid-cols-2 gap-8">
+                <!-- Colors -->
+                <div class="bg-white rounded-xl border border-slate-200 p-6">
+                    <h3 class="font-bold text-slate-800 mb-4">Palette de couleurs</h3>
+                    <div class="space-y-3">
+                        <div class="flex items-center gap-3">
+                            <div class="w-12 h-12 rounded-lg bg-african-gold"></div>
+                            <div>
+                                <div class="font-medium text-sm">African Gold</div>
+                                <div class="text-xs text-slate-500">#D4A017 — CTA primaire, accents</div>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <div class="w-12 h-12 rounded-lg bg-african-terracotta"></div>
+                            <div>
+                                <div class="font-medium text-sm">Terracotta</div>
+                                <div class="text-xs text-slate-500">#E2725B — Alertes, badges promo</div>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <div class="w-12 h-12 rounded-lg bg-african-forest"></div>
+                            <div>
+                                <div class="font-medium text-sm">Forest</div>
+                                <div class="text-xs text-slate-500">#2D5A3D — Succès, validation</div>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <div class="w-12 h-12 rounded-lg bg-african-ocean"></div>
+                            <div>
+                                <div class="font-medium text-sm">Ocean</div>
+                                <div class="text-xs text-slate-500">#1B4F72 — Liens, navigation active</div>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <div class="w-12 h-12 rounded-lg bg-slate-900"></div>
+                            <div>
+                                <div class="font-medium text-sm">Slate 900</div>
+                                <div class="text-xs text-slate-500">#0F172A — Texte principal, header</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Typography -->
+                <div class="bg-white rounded-xl border border-slate-200 p-6">
+                    <h3 class="font-bold text-slate-800 mb-4">Typographie</h3>
+                    <div class="space-y-4">
+                        <div>
+                            <div class="text-xs text-slate-500 mb-1">Font : Playfair Display (serif)</div>
+                            <div class="font-serif text-3xl font-bold">Titres de sections</div>
+                        </div>
+                        <div>
+                            <div class="text-xs text-slate-500 mb-1">Font : Inter (sans-serif)</div>
+                            <div class="text-xl font-bold">Sous-titres et cartes</div>
+                        </div>
+                        <div>
+                            <div class="text-xs text-slate-500 mb-1">Body text</div>
+                            <div class="text-base text-slate-700">Corps de texte standard pour les descriptions et paragraphes. Inter 16px/1.5 line-height.</div>
+                        </div>
+                        <div>
+                            <div class="text-xs text-slate-500 mb-1">Small / Captions</div>
+                            <div class="text-sm text-slate-500">Métadonnées, dates, informations secondaires. Inter 14px.</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Components -->
+                <div class="bg-white rounded-xl border border-slate-200 p-6 md:col-span-2">
+                    <h3 class="font-bold text-slate-800 mb-4">Composants clés</h3>
+                    <div class="grid md:grid-cols-3 gap-6">
+                        <div class="space-y-3">
+                            <h4 class="text-sm font-semibold text-slate-600">Boutons</h4>
+                            <button class="w-full py-2.5 bg-african-gold text-slate-900 font-bold rounded-xl">Primaire</button>
+                            <button class="w-full py-2.5 bg-slate-800 text-white font-medium rounded-xl">Secondaire</button>
+                            <button class="w-full py-2.5 bg-white border border-slate-200 text-slate-700 font-medium rounded-xl">Tertiaire</button>
+                            <button class="w-full py-2.5 bg-slate-100 text-slate-600 font-medium rounded-xl" disabled>Désactivé</button>
+                        </div>
+                        <div class="space-y-3">
+                            <h4 class="text-sm font-semibold text-slate-600">Formulaires</h4>
+                            <input type="text" placeholder="Input standard" class="w-full px-4 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-african-gold/50">
+                            <select class="w-full px-4 py-2.5 border border-slate-200 rounded-lg text-sm bg-white">
+                                <option>Sélectionner...</option>
+                            </select>
+                            <div class="flex items-center gap-2">
+                                <input type="checkbox" class="rounded text-african-gold" checked>
+                                <span class="text-sm text-slate-600">Checkbox</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <input type="radio" class="text-african-gold" checked>
+                                <span class="text-sm text-slate-600">Radio</span>
+                            </div>
+                        </div>
+                        <div class="space-y-3">
+                            <h4 class="text-sm font-semibold text-slate-600">États & Feedback</h4>
+                            <div class="px-3 py-2 bg-green-100 text-green-800 text-sm rounded-lg">✓ Succès — Paiement validé</div>
+                            <div class="px-3 py-2 bg-yellow-100 text-yellow-800 text-sm rounded-lg">⚠ Attention — En attente</div>
+                            <div class="px-3 py-2 bg-red-100 text-red-800 text-sm rounded-lg">✕ Erreur — Paiement refusé</div>
+                            <div class="px-3 py-2 bg-blue-100 text-blue-800 text-sm rounded-lg">ℹ Info — Nouvelle version</div>
+                            <div class="flex items-center gap-2">
+                                <div class="w-8 h-8 border-2 border-african-gold border-t-transparent rounded-full animate-spin"></div>
+                                <span class="text-sm text-slate-600">Chargement...</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Spacing & Shadows -->
+                <div class="bg-white rounded-xl border border-slate-200 p-6">
+                    <h3 class="font-bold text-slate-800 mb-4">Ombres & Arrondis</h3>
+                    <div class="space-y-4">
+                        <div class="p-4 bg-white rounded shadow-sm border">shadow-sm — Cartes légères</div>
+                        <div class="p-4 bg-white rounded-lg shadow border">shadow — Cartes standard</div>
+                        <div class="p-4 bg-white rounded-xl shadow-lg border">shadow-lg — Modales, dropdowns</div>
+                        <div class="p-4 bg-white rounded-2xl shadow-xl border">shadow-xl — Hero, overlays</div>
+                    </div>
+                </div>
+
+                <!-- Icons & Assets -->
+                <div class="bg-white rounded-xl border border-slate-200 p-6">
+                    <h3 class="font-bold text-slate-800 mb-4">Icônes & Assets</h3>
+                    <div class="space-y-3 text-sm text-slate-600">
+                        <p><strong>Librairie :</strong> Lucide React (shadcn/ui default)</p>
+                        <p><strong>Fallback :</strong> Heroicons si besoin</p>
+                        <p><strong>Taille standard :</strong> 20px (w-5 h-5)</p>
+                        <p><strong>Taille bouton :</strong> 16px (w-4 h-4)</p>
+                        <p><strong>Taille navigation :</strong> 24px (w-6 h-6)</p>
+                        <div class="flex gap-3 mt-4">
+                            <div class="w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg></div>
+                            <div class="w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg></div>
+                            <div class="w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/></svg></div>
+                            <div class="w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/></svg></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Responsive Breakpoints -->
+            <div class="mt-8 bg-white rounded-xl border border-slate-200 p-6">
+                <h3 class="font-bold text-slate-800 mb-4">Breakpoints Responsive</h3>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div class="p-4 bg-slate-50 rounded-lg text-center">
+                        <div class="text-lg font-bold text-slate-800">sm</div>
+                        <div class="text-sm text-slate-500">640px</div>
+                        <div class="text-xs text-slate-400 mt-1">Mobile paysage</div>
+                    </div>
+                    <div class="p-4 bg-slate-50 rounded-lg text-center">
+                        <div class="text-lg font-bold text-slate-800">md</div>
+                        <div class="text-sm text-slate-500">768px</div>
+                        <div class="text-xs text-slate-400 mt-1">Tablette</div>
+                    </div>
+                    <div class="p-4 bg-slate-50 rounded-lg text-center">
+                        <div class="text-lg font-bold text-slate-800">lg</div>
+                        <div class="text-sm text-slate-500">1024px</div>
+                        <div class="text-xs text-slate-400 mt-1">Desktop</div>
+                    </div>
+                    <div class="p-4 bg-slate-50 rounded-lg text-center">
+                        <div class="text-lg font-bold text-slate-800">xl</div>
+                        <div class="text-sm text-slate-500">1280px</div>
+                        <div class="text-xs text-slate-400 mt-1">Grand écran</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    </div><!-- end viewport-container -->
+
+    <script>
+        function showPage(pageId) {
+            // Hide all pages
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            // Show target
+            document.getElementById('page-' + pageId).classList.add('active');
+            // Update tabs
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                if(btn.dataset.tab === pageId) {
+                    btn.classList.remove('bg-slate-800', 'text-slate-300');
+                    btn.classList.add('bg-white', 'text-slate-900', 'font-semibold');
+                } else {
+                    btn.classList.add('bg-slate-800', 'text-slate-300');
+                    btn.classList.remove('bg-white', 'text-slate-900', 'font-semibold');
+                }
+            });
+            window.scrollTo(0,0);
+        }
+
+        function setViewport(mode) {
+            const container = document.getElementById('viewport-container');
+            const btnDesktop = document.getElementById('btn-desktop');
+            const btnMobile = document.getElementById('btn-mobile');
+
+            if(mode === 'mobile') {
+                container.style.maxWidth = '420px';
+                container.style.margin = '0 auto';
+                container.style.borderLeft = '1px solid #e2e8f0';
+                container.style.borderRight = '1px solid #e2e8f0';
+                btnMobile.classList.replace('bg-slate-800', 'bg-slate-700');
+                btnDesktop.classList.replace('bg-slate-700', 'bg-slate-800');
+            } else {
+                container.style.maxWidth = '80rem';
+                container.style.margin = '0 auto';
+                container.style.borderLeft = 'none';
+                container.style.borderRight = 'none';
+                btnDesktop.classList.replace('bg-slate-800', 'bg-slate-700');
+                btnMobile.classList.replace('bg-slate-700', 'bg-slate-800');
+            }
+        }
+    </script>
+</body>
+</html>
