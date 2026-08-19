@@ -20,7 +20,7 @@
 | Contrat d’authentification | Conforme | Les routes de production utilisent `/api/v1/auth/login`, `/api/v1/auth/register`, `/api/v1/auth/forgot-password`, `/api/v1/auth/me` et `/api/v1/auth/logout`. |
 | Adaptation des réponses API | Conforme | `normalizeUser` et `adaptAuthResponse` normalisent les identités et tolèrent les enveloppes de réponse documentées. |
 | Session preview | Conforme preview | `sessionStorage` conserve uniquement l’utilisateur de démonstration nécessaire à la garde ; il ne représente pas une session backend réelle. |
-| Garde globale | Conforme | `library`, `reader`, `checkout`, `confirmation` et `admin` sont protégées lorsqu’aucun utilisateur authentifié n’est disponible. |
+| Garde globale | Conforme | `library`, `reader` et `admin` sont protégées ; `checkout` et `confirmation` restent accessibles aux invités conformément à la décision client sur le compte non obligatoire. |
 | Garde de rôle | Conforme | Le back-office accepte uniquement `admin`, `super_admin` et `moderator`. Les autres rôles sont redirigés vers une vue non autorisée. |
 | Dashboard API | Conforme | Les données sont composées depuis `/api/v1/library`, `/api/v1/library/{id}/progress` et `/api/v1/books`, conformément à la documentation du dashboard. |
 | Compatibilité dashboard/catalogue | Conforme | L’action d’ajout au panier accepte un `DashboardBook` complet et vérifie que la fiche catalogue locale existe avant d’ajouter un article. |
@@ -43,7 +43,7 @@ Le flux `forgotPassword` appelle désormais `POST /api/v1/auth/forgot-password`.
 
 ### Protection des vues
 
-`AuthGuard` est utilisé pour les vues nécessitant une session. La vérification initiale de session est distinguée de l’absence de session pour éviter une redirection prématurée pendant le chargement. `RoleGuard` protège le back-office et empêche un utilisateur standard d’atteindre l’espace administrateur.
+`AuthGuard` est utilisé pour les vues nécessitant une session. La vérification initiale de session est distinguée de l’absence de session pour éviter une redirection prématurée pendant le chargement. `RoleGuard` protège le back-office et empêche un utilisateur standard d’atteindre l’espace administrateur. Le checkout et la confirmation restent publics afin de supporter l’achat invité décidé côté client ; la bibliothèque et le lecteur restent privés.
 
 La protection est appliquée au niveau de l’application afin d’éviter qu’une navigation interne contourne la garde. La déconnexion supprime la session preview et restaure les vues publiques.
 

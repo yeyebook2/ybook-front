@@ -6,15 +6,20 @@ export type Chapter = {
 export type Book = {
   id: number
   title: string
+  subtitle?: string
   author: string
+  authorSlug?: string
   price: number
   category: string
   rating: number
   reviews: number
   pages: number
   year: number
+  isbn?: string
+  format?: string
   cover: string
   description: string
+  tags?: string[]
   chapters: Chapter[]
   published?: boolean
   slug?: string
@@ -26,15 +31,20 @@ export type CatalogBook = {
   id: number
   slug?: string
   title: string
+  subtitle?: string
   author: string
+  authorSlug?: string
   price: number
   category: string
   rating: number
   reviews: number
   pages: number
   year: number
+  isbn?: string
+  format?: string
   cover: string
   description: string
+  tags?: string[]
   language?: string
   publishedAt?: string
   published?: boolean
@@ -80,12 +90,19 @@ export type CatalogResponse = {
   facets?: CatalogFacets
 }
 
+type BackendAuthor = {
+  name?: string
+  slug?: string
+}
+
 export type BackendBook = {
   id: number | string
   slug?: string
   title: string
-  author?: string | { name?: string }
+  subtitle?: string
+  author?: string | BackendAuthor
   author_name?: string
+  author_slug?: string
   category?: string
   category_name?: string
   categories?: Array<string | { name?: string }>
@@ -99,10 +116,13 @@ export type BackendBook = {
   reviews_count?: number
   pages?: number
   page_count?: number
+  isbn?: string
+  format?: string
   year?: number
   publication_year?: number
   language?: string
   description?: string
+  tags?: string[]
   published?: boolean
   published_at?: string
 }

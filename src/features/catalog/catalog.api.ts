@@ -24,6 +24,11 @@ function resolveAuthor(book: BackendBook): string {
   return book.author?.name ?? book.author_name ?? "Auteur YéYéBook"
 }
 
+function resolveAuthorSlug(book: BackendBook): string | undefined {
+  if (typeof book.author === "object") return book.author.slug
+  return book.author_slug
+}
+
 function resolveCategory(book: BackendBook): string {
   if (book.category) return book.category
   if (book.category_name) return book.category_name
@@ -37,12 +42,16 @@ export function mapBackendBook(book: BackendBook): CatalogBook {
     id: asNumber(book.id, 0),
     slug: book.slug,
     title: book.title,
+    subtitle: book.subtitle,
     author: resolveAuthor(book),
+    authorSlug: resolveAuthorSlug(book),
     price: asNumber(book.price ?? book.price_fcfa, 0),
     category: resolveCategory(book),
     rating: asNumber(book.rating ?? book.average_rating, 0),
     reviews: asNumber(book.reviews ?? book.reviews_count, 0),
     pages: asNumber(book.pages ?? book.page_count, 0),
+    isbn: book.isbn,
+    format: book.format,
     year: asNumber(
       book.year ?? book.publication_year,
       new Date().getFullYear(),
@@ -53,6 +62,7 @@ export function mapBackendBook(book: BackendBook): CatalogBook {
       "/src/imports/ybook-symbol-primary-1024px.png",
     description:
       book.description ?? "Découvrez ce titre dans la bibliothèque YéYéBook.",
+    tags: book.tags,
     language: book.language,
     publishedAt: book.published_at,
     published: book.published,

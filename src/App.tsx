@@ -29,6 +29,8 @@ import { getPreviewSession } from "@/features/auth/auth.session"
 import type { AuthApiResponse, AuthUser } from "@/features/auth/types"
 import { DashboardPage } from "@/features/dashboard/pages/DashboardPage"
 import type { DashboardBook } from "@/features/dashboard/types"
+import { loadCart, MAX_CART_QUANTITY, saveCart } from "@/features/cart"
+import type { CartItem } from "@/features/cart"
 import { CatalogPage } from "@/features/catalog/pages/CatalogPage"
 import {
   buildChapters,
@@ -76,10 +78,6 @@ import {
 } from "lucide-react"
 
 type View = "home" | "catalog" | "details" | "checkout" | "confirmation" | "library" | "reader" | "admin" | "login" | "register" | "dashboard"
-type CartItem = {
-  bookId: number
-  quantity: number
-}
 type ToastState = {
   message: string
   variant: "default" | "success" | "error" | "warning"
@@ -89,6 +87,7 @@ type OrderStatus = "paid" | "pending" | "refunded"
 type Order = {
   id: string
   customer: string
+  email?: string
   phone: string
   provider: string
   items: CartItem[]
@@ -98,6 +97,7 @@ type Order = {
 }
 type CheckoutDetails = {
   name: string
+  email: string
   phone: string
   provider: string
 }
@@ -224,7 +224,7 @@ export default function App() {
   const [books, setBooks] = useState<Book[]>(PREVIEW_BOOKS)
   const [orders, setOrders] = useState<Order[]>(SEED_ORDERS)
   const [selectedBookId, setSelectedBookId] = useState<number | null>(null)
-  const [cartItems, setCartItems] = useState<CartItem[]>([])
+  const [cartItems, setCartItems] = useState<CartItem[]>(() => loadCart())
   const [library, setLibrary] = useState<number[]>([])
   const [searchQuery, setSearchQuery] = useState("")
   const [activeCategory, setActiveCategory] = useState("Tous")
@@ -306,6 +306,11 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: "smooth" })
   }, [view, selectedBookId])
 
+  // Persist the guest/user cart locally until the cart API is connected.
+  useEffect(() => {
+    saveCart(cartItems)
+  }, [cartItems])
+
   // Persist reading progress
   useEffect(() => {
     try {
@@ -341,17 +346,34 @@ export default function App() {
   }
 
   const addToCart = (bookId: number) => {
+    const existing = cartItems.find((item) => item.bookId === bookId)
+    const book = books.find((b) => b.id === bookId)
+
+    if (existing && existing.quantity >= MAX_CART_QUANTITY) {
+      setToast({
+        message: "La quantité maximale de ce livre est de 5 exemplaires.",
+        variant: "warning",
+      })
+      setCartOpen(true)
+      return
+    }
+
     setCartItems((prev) => {
-      const existing = prev.find((item) => item.bookId === bookId)
-      if (existing)
-        return prev.map((i) =>
-          i.bookId === bookId ? { ...i, quantity: i.quantity + 1 } : i,
+      const current = prev.find((item) => item.bookId === bookId)
+      if (current) {
+        return prev.map((item) =>
+          item.bookId === bookId
+            ? {
+                ...item,
+                quantity: Math.min(MAX_CART_QUANTITY, item.quantity + 1),
+              }
+            : item,
         )
+      }
       return [...prev, { bookId, quantity: 1 }]
     })
-    const book = books.find((b) => b.id === bookId)
     setToast({
-      message: `« ${book?.title} » ajouté au panier`,
+      message: `« ${book?.title ?? "Livre"} » ajouté au panier`,
       variant: "success",
     })
     setCartOpen(true)
@@ -374,7 +396,13 @@ export default function App() {
       prev
         .map((i) =>
           i.bookId === bookId
-            ? { ...i, quantity: Math.max(0, i.quantity + delta) }
+            ? {
+                ...i,
+                quantity: Math.min(
+                  MAX_CART_QUANTITY,
+                  Math.max(0, i.quantity + delta),
+                ),
+              }
             : i,
         )
         .filter((i) => i.quantity > 0),
@@ -387,6 +415,7 @@ export default function App() {
     const order: Order = {
       id: `YB-${2419 + orders.length}`,
       customer: details.name.trim() || "Client",
+      email: details.email.trim(),
       phone: details.phone.trim(),
       provider: details.provider,
       items: cartItems,
@@ -419,6 +448,7 @@ export default function App() {
   const deleteBook = (id: number) => {
     const book = books.find((b) => b.id === id)
     setBooks((prev) => prev.filter((b) => b.id !== id))
+    setCartItems((prev) => prev.filter((item) => item.bookId !== id))
     setToast({
       message: `« ${book?.title ?? "Titre"} » supprimé du catalogue`,
       variant: "warning",
@@ -471,10 +501,10 @@ export default function App() {
   const visibleBooks = books.filter((b) => b.published !== false)
   const featured = visibleBooks[1] ?? visibleBooks[0]
   const heroCovers = visibleBooks.slice(0, 3)
-  const newReleases = visibleBooks.slice(2, 6)
+  const newReleases = visibleBooks.slice(0, 8)
   const bestSellers = [...visibleBooks]
     .sort((a, b) => b.reviews - a.reviews)
-    .slice(0, 3)
+    .slice(0, 10)
   const relatedBooks = selectedBook
     ? visibleBooks
         .filter(
@@ -494,6 +524,11 @@ export default function App() {
 
   const showAuthError = (message: string) =>
     setToast({ message, variant: "error" })
+  const showComingSoon = (label: string) =>
+    setToast({
+      message: `La page « ${label} » sera disponible dans une prochaine version.`,
+      variant: "default",
+    })
   const handleAuthenticated = (response: AuthApiResponse) => {
     if (!response.user) {
       showAuthError("La session n’a pas pu être initialisée.")
@@ -517,13 +552,7 @@ export default function App() {
     })
     go("home")
   }, [go])
-  const protectedViews: View[] = [
-    "library",
-    "reader",
-    "checkout",
-    "confirmation",
-    "admin",
-  ]
+  const protectedViews: View[] = ["library", "reader", "admin"]
 
   if (protectedViews.includes(view) && (!sessionChecked || !sessionUser)) {
     return (
@@ -1501,6 +1530,11 @@ export default function App() {
                   <h1 className="font-serif text-text-primary text-[36px] md:text-[44px] leading-[1.05]">
                     {selectedBook.title}
                   </h1>
+                  {selectedBook.subtitle && (
+                    <p className="text-label text-text-secondary">
+                      {selectedBook.subtitle}
+                    </p>
+                  )}
                   <p className="text-heading text-text-secondary">
                     par{" "}
                     <span className="text-brand-primary font-medium">
@@ -1529,11 +1563,8 @@ export default function App() {
                     <span className="text-display font-bold text-text-primary">
                       {formatPrice(selectedBook.price)}
                     </span>
-                    <span className="text-heading text-text-tertiary line-through">
-                      {formatPrice(Math.round(selectedBook.price * 1.28))}
-                    </span>
-                    <span className="px-md py-xs rounded-corner-sm bg-brand-primary text-on-brand text-video-title font-bold">
-                      -22%
+                    <span className="text-label-sm text-text-tertiary">
+                      TTC
                     </span>
                   </div>
                   <div className="flex gap-md">
@@ -1592,12 +1623,15 @@ export default function App() {
                 {/* Meta grid */}
                 <dl className="grid grid-cols-2 gap-x-2xl gap-y-xs text-label-sm">
                   {[
-                    { k: "Format", v: "Lecture en ligne" },
+                    { k: "Format", v: selectedBook.format ?? "ePub" },
                     { k: "Pages", v: `${selectedBook.pages}` },
-                    { k: "Langue", v: "Français" },
+                    {
+                      k: "Langue",
+                      v: selectedBook.language ?? "Français",
+                    },
                     {
                       k: "ISBN",
-                      v: `978-2-${1000 + selectedBook.id}-${selectedBook.year}`,
+                      v: selectedBook.isbn ?? "Non renseigné",
                     },
                     { k: "Publié", v: `${selectedBook.year}` },
                     { k: "Catégorie", v: selectedBook.category },
@@ -1693,13 +1727,16 @@ export default function App() {
                     Tags
                   </h3>
                   <div className="flex flex-wrap gap-sm">
-                    {[
-                      "#" + selectedBook.category.toLowerCase(),
-                      "#afrique",
-                      "#francophone",
-                      "#littérature",
-                      "#" + selectedBook.author.split(" ").pop()?.toLowerCase(),
-                    ].map((tag) => (
+                    {(
+                      selectedBook.tags ?? [
+                        selectedBook.category.toLowerCase(),
+                        "afrique",
+                        "francophone",
+                        "littérature",
+                        selectedBook.author.split(" ").pop()?.toLowerCase() ??
+                          "auteur",
+                      ]
+                    ).map((tag) => (
                       <span
                         key={tag}
                         className="px-md py-xs rounded-corner-full bg-surface-bg border border-border-secondary text-video-title text-text-secondary"
@@ -2125,21 +2162,23 @@ export default function App() {
           <div>
             <h3 className="text-white font-semibold mb-md">Aide</h3>
             <ul className="flex flex-col gap-sm text-label-sm">
-              <li>
-                <a href="#main" className="hover:text-white transition-colors">
-                  Comment ça marche
-                </a>
-              </li>
-              <li>
-                <a href="#main" className="hover:text-white transition-colors">
-                  FAQ
-                </a>
-              </li>
-              <li>
-                <a href="#main" className="hover:text-white transition-colors">
-                  Contact
-                </a>
-              </li>
+              {[
+                "Comment ça marche",
+                "FAQ",
+                "Contact",
+                "Conditions générales",
+                "Confidentialité",
+              ].map((label) => (
+                <li key={label}>
+                  <button
+                    type="button"
+                    onClick={() => showComingSoon(label)}
+                    className="hover:text-white transition-colors cursor-pointer"
+                  >
+                    {label}
+                  </button>
+                </li>
+              ))}
               <li>
                 <button
                   onClick={() => go("admin")}
@@ -2241,7 +2280,8 @@ export default function App() {
               <>
                 <div className="flex-1 overflow-y-auto px-xl py-lg flex flex-col gap-lg">
                   {cartItems.map((item) => {
-                    const book = books.find((b) => b.id === item.bookId)!
+                    const book = books.find((b) => b.id === item.bookId)
+                    if (!book) return null
                     return (
                       <div key={item.bookId} className="flex gap-lg">
                         <button
@@ -2710,7 +2750,8 @@ function CheckoutView({
           </h2>
           <div className="flex flex-col gap-md">
             {cartItems.map((item) => {
-              const book = books.find((b) => b.id === item.bookId)!
+              const book = books.find((b) => b.id === item.bookId)
+              if (!book) return null
               return (
                 <div
                   key={item.bookId}
@@ -2759,7 +2800,12 @@ function CheckoutView({
               iconStart={<ShieldCheck className="w-4 h-4" />}
               disabled={!valid}
               onClick={() =>
-                onPlaceOrder({ name: form.name, phone: form.phone, provider })
+                onPlaceOrder({
+                  name: form.name,
+                  email: form.email,
+                  phone: form.phone,
+                  provider,
+                })
               }
             >
               Payer {formatPrice(total)}
