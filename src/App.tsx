@@ -277,16 +277,15 @@ export default function App({
     : null
   const router = useRouter()
   const [view, setView] = useState<View>(initialView)
-  const [sessionUser, setSessionUser] = useState<AuthUser | null>(() =>
-    getPreviewSession(),
-  )
+  const [sessionUser, setSessionUser] = useState<AuthUser | null>(null)
   const [sessionChecked, setSessionChecked] = useState(false)
   const [books, setBooks] = useState<Book[]>(PREVIEW_BOOKS)
   const [orders, setOrders] = useState<Order[]>(SEED_ORDERS)
   const [selectedBookId, setSelectedBookId] = useState<number | null>(
     initialBookId,
   )
-  const [cartItems, setCartItems] = useState<CartItem[]>(() => loadCart())
+  const [cartItems, setCartItems] = useState<CartItem[]>([])
+  const [cartHydrated, setCartHydrated] = useState(false)
   const [library, setLibrary] = useState<number[]>([])
   const [searchQuery, setSearchQuery] = useState("")
   const [activeCategory, setActiveCategory] = useState("Tous")
@@ -306,7 +305,8 @@ export default function App({
   )
   const [currentChapter, setCurrentChapter] = useState(0)
   const [chapterListOpen, setChapterListOpen] = useState(false)
-  const [progress, setProgress] = useState<Progress>(() => loadProgress())
+  const [progress, setProgress] = useState<Progress>({})
+  const [progressHydrated, setProgressHydrated] = useState(false)
   const [resumePrompt, setResumePrompt] = useState<{
     book: Book
     chapter: number
@@ -361,13 +361,21 @@ export default function App({
     window.scrollTo({ top: 0, behavior: "smooth" })
   }, [view, selectedBookId])
   useEffect(() => {
-    saveCart(cartItems)
-  }, [cartItems])
+    setCartItems(loadCart())
+    setCartHydrated(true)
+    setProgress(loadProgress())
+    setProgressHydrated(true)
+  }, [])
   useEffect(() => {
+    if (!cartHydrated) return
+    saveCart(cartItems)
+  }, [cartHydrated, cartItems])
+  useEffect(() => {
+    if (!progressHydrated) return
     try {
       localStorage.setItem(PROGRESS_KEY, JSON.stringify(progress))
     } catch {}
-  }, [progress])
+  }, [progressHydrated, progress])
   useEffect(() => {
     document.title = "YéYéBook — Le nouveau souffle de la littérature africaine"
     let link = document.querySelector<HTMLLinkElement>("link[rel='icon']")
@@ -575,7 +583,7 @@ export default function App({
   const visibleBooks = books.filter((b) => b.published !== false)
   const featured = visibleBooks[1] ?? visibleBooks[0]
   const heroCovers = visibleBooks.slice(0, 3)
-  const newReleases = visibleBooks.slice(0, 8)
+  const newReleases = visibleBooks.slice(2, 6)
   const bestSellers = [...visibleBooks]
     .sort((a, b) => b.reviews - a.reviews)
     .slice(0, 10)
@@ -1154,7 +1162,7 @@ export default function App({
             <button
               onClick={() => setCartOpen(true)}
               aria-label={`Ouvrir le panier${
-                cartCount > 0
+                cartHydrated && cartCount > 0
                   ? ` (${cartCount} article${cartCount > 1 ? "s" : ""})`
                   : ""
               }`}
@@ -1165,7 +1173,7 @@ export default function App({
                 strokeWidth={1.75}
                 aria-hidden="true"
               />
-              {cartCount > 0 && (
+              {cartHydrated && cartCount > 0 && (
                 <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-corner-full bg-brand-primary text-on-brand text-[11px] font-bold leading-none">
                   {cartCount}
                 </span>
@@ -1206,7 +1214,7 @@ export default function App({
               aria-label={
                 sessionUser ? "Ouvrir mon espace" : "Ouvrir l’espace lecteur"
               }
-              className="cursor-pointer rounded-corner-full"
+              className="inline-flex h-8 w-8 shrink-0 items-center justify-center cursor-pointer rounded-corner-full overflow-hidden"
             >
               <Avatar
                 type="image"
@@ -1966,7 +1974,7 @@ export default function App({
             <div className="flex items-center justify-between px-xl py-lg border-b border-border-secondary">
               <h2 className="text-heading font-semibold text-text-primary">
                 Panier{" "}
-                {cartCount > 0 && (
+                {cartHydrated && cartCount > 0 && (
                   <span className="text-text-tertiary font-normal">
                     ({cartCount})
                   </span>
