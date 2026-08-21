@@ -42,4 +42,4 @@ Le build Next.js génère les onze routes App Router prévues. Les données prev
 
 ## Conclusion
 
-Le rendu actuel est **conforme à la maquette Figma sur les parcours contrôlés**, après correction des trois écarts confirmés de fidélité et d’hydratation. La conformité porte sur l’interface et les comportements preview ; les intégrations backend, l’agrégateur de paiement, la session réelle et le lecteur e-book de production restent hors du périmètre de cet audit visuel.
+Le rendu actuel est **conforme à la maquette Figma sur les parcours contrôlés**, après correction des trois écarts confirmés de fidélité et d’hydratation. Une erreur de module manquant `./987.js` observée lors d’une reconstruction concurrente du serveur de développement a été résolue par suppression du cache `.next` et redémarrage propre ; elle ne se reproduit plus et la console de l’accueil est saine. La conformité porte sur l’interface et les comportements preview ; les intégrations backend, l’agrégateur de paiement, la session réelle et le lecteur e-book de production restent hors du périmètre de cet audit visuel.
