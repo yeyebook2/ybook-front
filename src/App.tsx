@@ -1,3 +1,48 @@
+"use client"
+
+/** A short, realistic order history so the back-office is populated on first load. */
+
+// Lecteur — réglages de lecture (thème, taille, interligne)
+
+// Reader state
+
+// Persist the guest/user cart locally until the cart API is connected.
+
+// Persist reading progress
+/* storage unavailable — progress stays in-memory */
+
+// Wire the YéYéBook favicon + document title (index.html keeps Figma placeholders)
+
+// ---- Admin (Phase 1 back-office) --------------------------------------
+
+// ---- Reading ----------------------------------------------------------
+// Offer to resume where the reader left off.
+
+// ---- Auth gets its own focused chrome ----------------------------------
+
+// ---- Admin gets its own full-screen chrome ----------------------------
+
+// ---- Immersive reader gets its own full-screen chrome -----------------
+
+// Reading themes — parchment/sepia/ink palettes applied to the pane only.
+/* Reader toolbar — dark plum chrome, consistent across themes */ /* Settings panel */ /* Chapter sidebar (desktop) */ /* Reading pane */ /* Chapter navigation */ /* Bottom reading progress bar with page count */ /* Chapter drawer (mobile) */ /* Top navigation — horizontal navbar (no sidebar), sticky and premium */ /* ---------------------------------------------------------------- HOME */ /* Hero — solid deep-wine ground, editorial and calm (no gradient) */ /* Nouveautés */ /* Best-sellers du mois — ranked list */ /* Catégories populaires — gradient tiles */
+// Calm ivory cards with a muted charter-tinted icon chip — no fills, no gradients.
+/* Trust band */ /* ---------------------------------------------------------------- CATALOG */ /* ---------------------------------------------------------------- DETAILS */ /* ---------------------------------------------------------------- CHECKOUT */ /* ---------------------------------------------------------------- CONFIRMATION */ /* ---------------------------------------------------------------- LIBRARY */ /* Stats */ /* Historique des commandes */ /* Footer — 4-column with newsletter (maquette skeleton) */ /* ---------------------------------------------------------------- CART DRAWER */ /* ---------------------------------------------------------------- RESUME PROMPT */ /* ---------------------------------------------------------------- TOAST */
+// Wizard step within checkout: 1 = Informations, 2 = Paiement.
+// Map wizard step (1/2) onto the visible stepper positions (2 = Informations, 3 = Paiement).
+/* Wizard stepper */
+
+/* ==================================================================== *
+ * Back-office admin (Phase 1) — catalogue management, orders & stats.
+ * Runs in its own full-screen shell, separate from the storefront chrome.
+ * ==================================================================== */
+
+// Monthly revenue for the bar chart — last 6 months, from paid/pending orders.
+
+// Revenue share per category, for the breakdown bars.
+/* Sidebar */ /* Main */ /* ------------------------------------------------ DASHBOARD */ /* Sales bar chart */ /* Category breakdown */ /* Recent orders */ /* Top titles */ /* ------------------------------------------------ CATALOG */ /* ------------------------------------------------ ORDERS */
+
+import { useRouter } from "next/navigation"
 import {
   useState,
   useMemo,
@@ -13,8 +58,8 @@ import {
   Toast,
   InputField,
 } from "@figma/astraui"
-import ybookSymbol from "@/imports/ybook-symbol-primary-1024px.png"
-import faviconPng from "@/imports/ybook-favicon-180x180.png"
+const ybookSymbol = "/brand/ybook-symbol-primary.png"
+const faviconPng = "/brand/ybook-favicon-180.png"
 import { Wordmark } from "@/components/brand/Wordmark"
 import { LoginPage } from "@/features/auth/pages/LoginPage"
 import { RegisterPage } from "@/features/auth/pages/RegisterPage"
@@ -78,7 +123,7 @@ import {
   Sparkles,
 } from "lucide-react"
 
-type View = "home" | "catalog" | "details" | "checkout" | "confirmation" | "library" | "reader" | "admin" | "login" | "register" | "dashboard"
+export type View = "home" | "catalog" | "details" | "checkout" | "confirmation" | "library" | "reader" | "admin" | "login" | "register" | "dashboard"
 type ToastState = {
   message: string
   variant: "default" | "success" | "error" | "warning"
@@ -131,8 +176,6 @@ const PROVIDER_LABELS: Record<string, string> = {
   wave: "Wave",
   moov: "Moov Money",
 }
-
-/** A short, realistic order history so the back-office is populated on first load. */
 const SEED_ORDERS: Order[] = [
   {
     id: "YB-2418",
@@ -216,15 +259,33 @@ function loadProgress(): Progress {
   }
 }
 
-export default function App() {
-  const [view, setView] = useState<View>("home")
+export default function App({
+  initialView = "home",
+  initialBookSlug,
+  initialReaderSlug,
+}: {
+  initialView?: View
+  initialBookSlug?: string
+  initialReaderSlug?: string
+}) {
+  const initialBookId = initialBookSlug
+    ? (PREVIEW_BOOKS.find((book) => book.slug === initialBookSlug)?.id ?? null)
+    : null
+  const initialReaderId = initialReaderSlug
+    ? (PREVIEW_BOOKS.find((book) => book.slug === initialReaderSlug)?.id ??
+      null)
+    : null
+  const router = useRouter()
+  const [view, setView] = useState<View>(initialView)
   const [sessionUser, setSessionUser] = useState<AuthUser | null>(() =>
     getPreviewSession(),
   )
   const [sessionChecked, setSessionChecked] = useState(false)
   const [books, setBooks] = useState<Book[]>(PREVIEW_BOOKS)
   const [orders, setOrders] = useState<Order[]>(SEED_ORDERS)
-  const [selectedBookId, setSelectedBookId] = useState<number | null>(null)
+  const [selectedBookId, setSelectedBookId] = useState<number | null>(
+    initialBookId,
+  )
   const [cartItems, setCartItems] = useState<CartItem[]>(() => loadCart())
   const [library, setLibrary] = useState<number[]>([])
   const [searchQuery, setSearchQuery] = useState("")
@@ -233,8 +294,6 @@ export default function App() {
   const [toast, setToast] = useState<ToastState>(null)
 
   const [libGrid, setLibGrid] = useState(true)
-
-  // Lecteur — réglages de lecture (thème, taille, interligne)
   const [readerTheme, setReaderTheme] = useState<"light" | "sepia" | "dark">(
     "light",
   )
@@ -242,9 +301,9 @@ export default function App() {
   const [readerLeading, setReaderLeading] = useState(1.75)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [bookmarks, setBookmarks] = useState<Record<number, number[]>>({})
-
-  // Reader state
-  const [readerBookId, setReaderBookId] = useState<number | null>(null)
+  const [readerBookId, setReaderBookId] = useState<number | null>(
+    initialReaderId,
+  )
   const [currentChapter, setCurrentChapter] = useState(0)
   const [chapterListOpen, setChapterListOpen] = useState(false)
   const [progress, setProgress] = useState<Progress>(() => loadProgress())
@@ -301,22 +360,14 @@ export default function App() {
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "smooth" })
   }, [view, selectedBookId])
-
-  // Persist the guest/user cart locally until the cart API is connected.
   useEffect(() => {
     saveCart(cartItems)
   }, [cartItems])
-
-  // Persist reading progress
   useEffect(() => {
     try {
       localStorage.setItem(PROGRESS_KEY, JSON.stringify(progress))
-    } catch {
-      /* storage unavailable — progress stays in-memory */
-    }
+    } catch {}
   }, [progress])
-
-  // Wire the YéYéBook favicon + document title (index.html keeps Figma placeholders)
   useEffect(() => {
     document.title = "YéYéBook — Le nouveau souffle de la littérature africaine"
     let link = document.querySelector<HTMLLinkElement>("link[rel='icon']")
@@ -329,16 +380,40 @@ export default function App() {
     link.href = faviconPng
   }, [])
 
-  const go = useCallback((next: View) => setView(next), [])
+  const go = useCallback(
+    (next: View) => {
+      setView(next)
+      const routes: Partial<Record<View, string>> = {
+        home: "/",
+        catalog: "/catalog",
+        checkout: "/checkout",
+        dashboard: "/dashboard",
+        library: "/library",
+        login: "/login",
+        register: "/register",
+        admin: "/admin",
+      }
+      const route = routes[next]
+      if (route) router.push(route)
+    },
+    [router],
+  )
 
   const openBook = (id: number) => {
+    const book = books.find((candidate) => candidate.id === id)
     setSelectedBookId(id)
     setView("details")
+    router.push(book?.slug ? `/books/${book.slug}` : "/catalog")
   }
 
   const openCatalog = (category?: string) => {
     setActiveCategory(category ?? "Tous")
     setView("catalog")
+    const query =
+      category && category !== "Tous"
+        ? `?category=${encodeURIComponent(category)}`
+        : ""
+    router.push(`/catalog${query}`)
   }
 
   const addToCart = (bookId: number, options: { openCart?: boolean } = {}) => {
@@ -431,8 +506,6 @@ export default function App() {
       variant: "success",
     })
   }
-
-  // ---- Admin (Phase 1 back-office) --------------------------------------
   const saveBook = (book: Book) => {
     setBooks((prev) => {
       const exists = prev.some((b) => b.id === book.id)
@@ -455,7 +528,12 @@ export default function App() {
   const togglePublish = (id: number) => {
     setBooks((prev) =>
       prev.map((b) =>
-        b.id === id ? { ...b, published: b.published === false } : b,
+        b.id === id
+          ? {
+              ...b,
+              published: b.published === false,
+            }
+          : b,
       ),
     )
   }
@@ -463,14 +541,11 @@ export default function App() {
   const setOrderStatus = (id: string, status: OrderStatus) => {
     setOrders((prev) => prev.map((o) => (o.id === id ? { ...o, status } : o)))
   }
-
-  // ---- Reading ----------------------------------------------------------
   const startReading = (bookId: number) => {
     const book = books.find((b) => b.id === bookId)
     if (!book) return
     const saved = progress[bookId]
     if (saved !== undefined && saved > 0) {
-      // Offer to resume where the reader left off.
       setResumePrompt({ book, chapter: saved })
       return
     }
@@ -484,6 +559,8 @@ export default function App() {
     setResumePrompt(null)
     setView("reader")
     setProgress((prev) => ({ ...prev, [bookId]: chapter }))
+    const targetBook = books.find((book) => book.id === bookId)
+    if (targetBook?.slug) router.push(`/reader/${targetBook.slug}`)
   }
 
   const goToChapter = (index: number) => {
@@ -526,11 +603,13 @@ export default function App() {
     setSessionUser(response.user)
     setToast({ message: response.message, variant: "success" })
     setView("dashboard")
+    router.push("/dashboard")
   }
   const handleLogout = async () => {
     await logout()
     setSessionUser(null)
     setView("home")
+    router.push("/")
     setToast({ message: "Vous êtes déconnecté·e.", variant: "default" })
   }
   const redirectToLogin = useCallback(() => go("login"), [go])
@@ -554,8 +633,6 @@ export default function App() {
       </AuthGuard>
     )
   }
-
-  // ---- Auth gets its own focused chrome ----------------------------------
   if (view === "login") {
     return (
       <>
@@ -610,8 +687,6 @@ export default function App() {
       </>
     )
   }
-
-  // ---- Admin gets its own full-screen chrome ----------------------------
   if (view === "dashboard") {
     return (
       <AuthGuard
@@ -670,14 +745,10 @@ export default function App() {
       </RoleGuard>
     )
   }
-
-  // ---- Immersive reader gets its own full-screen chrome -----------------
   if (view === "reader" && readerBook) {
     const chapter = readerBook.chapters[currentChapter]
     const total = readerBook.chapters.length
     const pct = Math.round(((currentChapter + 1) / total) * 100)
-
-    // Reading themes — parchment/sepia/ink palettes applied to the pane only.
     const themes = {
       light: {
         page: "#fff6eb",
@@ -717,7 +788,7 @@ export default function App() {
         className="min-h-screen flex flex-col"
         style={{ backgroundColor: t.page }}
       >
-        {/* Reader toolbar — dark plum chrome, consistent across themes */}
+        {}
         <header className="sticky top-0 z-40 bg-[#1a0f0c] text-white">
           <div className="max-w-[1280px] mx-auto px-lg md:px-2xl h-[60px] flex items-center gap-lg">
             <button
@@ -773,7 +844,7 @@ export default function App() {
             </div>
           </div>
 
-          {/* Settings panel */}
+          {}
           {settingsOpen && (
             <div className="absolute right-2 md:right-6 top-[64px] w-[300px] max-w-[calc(100vw-16px)] rounded-corner-lg border border-border-secondary bg-surface-bg text-text-primary shadow-2xl p-xl animate-rise z-50">
               <p className="text-label-sm font-semibold mb-md">Thème</p>
@@ -852,7 +923,7 @@ export default function App() {
         </header>
 
         <div className="flex-1 w-full max-w-[1280px] mx-auto grid lg:grid-cols-[280px_1fr]">
-          {/* Chapter sidebar (desktop) */}
+          {}
           <aside
             className="hidden lg:block py-2xl pr-lg sticky top-[61px] self-start max-h-[calc(100vh-61px)] overflow-y-auto"
             style={{ borderRight: `1px solid ${t.rule}` }}
@@ -866,7 +937,7 @@ export default function App() {
             />
           </aside>
 
-          {/* Reading pane */}
+          {}
           <main
             id="main"
             className="px-xl md:px-4xl py-3xl md:py-4xl pb-5xl animate-fade"
@@ -894,7 +965,7 @@ export default function App() {
                 ))}
               </div>
 
-              {/* Chapter navigation */}
+              {}
               <nav
                 className="flex items-center justify-between gap-lg mt-4xl pt-2xl"
                 style={{ borderTop: `1px solid ${t.rule}` }}
@@ -936,7 +1007,7 @@ export default function App() {
           </main>
         </div>
 
-        {/* Bottom reading progress bar with page count */}
+        {}
         <div
           className="sticky bottom-0 z-40 backdrop-blur-xl"
           style={{
@@ -974,7 +1045,7 @@ export default function App() {
           </div>
         </div>
 
-        {/* Chapter drawer (mobile) */}
+        {}
         {chapterListOpen && (
           <div className="fixed inset-0 z-50 flex lg:hidden">
             <div
@@ -1034,7 +1105,7 @@ export default function App() {
         Aller au contenu principal
       </a>
 
-      {/* Top navigation — horizontal navbar (no sidebar), sticky and premium */}
+      {}
       <header className="sticky top-0 z-40 bg-surface-bg/85 backdrop-blur-xl border-b border-border-secondary">
         <div className="max-w-[1320px] mx-auto px-xl md:px-2xl h-[72px] flex items-center gap-2xl">
           <button
@@ -1149,10 +1220,10 @@ export default function App() {
       </header>
 
       <main id="main" className="flex-1 w-full">
-        {/* ---------------------------------------------------------------- HOME */}
+        {}
         {view === "home" && (
           <div className="max-w-[1320px] mx-auto px-xl md:px-2xl py-3xl flex flex-col gap-5xl animate-fade">
-            {/* Hero — solid deep-wine ground, editorial and calm (no gradient) */}
+            {}
             <section className="relative rounded-corner-xl overflow-hidden bg-[#471423] text-white border border-white/10">
               <div
                 className="absolute inset-y-0 left-0 w-1 bg-brand-primary"
@@ -1235,7 +1306,7 @@ export default function App() {
               </div>
             </section>
 
-            {/* Nouveautés */}
+            {}
             <section
               className="flex flex-col gap-xl"
               aria-labelledby="new-title"
@@ -1267,7 +1338,7 @@ export default function App() {
               </div>
             </section>
 
-            {/* Best-sellers du mois — ranked list */}
+            {}
             <section
               className="flex flex-col gap-xl"
               aria-labelledby="best-title"
@@ -1323,7 +1394,7 @@ export default function App() {
               </div>
             </section>
 
-            {/* Catégories populaires — gradient tiles */}
+            {}
             <section
               className="flex flex-col gap-xl"
               aria-labelledby="cats-title"
@@ -1339,7 +1410,6 @@ export default function App() {
                   const count = visibleBooks.filter(
                     (b) => b.category === cat,
                   ).length
-                  // Calm ivory cards with a muted charter-tinted icon chip — no fills, no gradients.
                   const tiles: Record<string, {
                     chip: string
                     icon: ReactNode
@@ -1388,7 +1458,7 @@ export default function App() {
               </div>
             </section>
 
-            {/* Trust band */}
+            {}
             <section
               className="grid md:grid-cols-3 gap-lg"
               aria-label="Nos garanties"
@@ -1436,7 +1506,7 @@ export default function App() {
           </div>
         )}
 
-        {/* ---------------------------------------------------------------- CATALOG */}
+        {}
         {view === "catalog" && (
           <CatalogPage
             books={books}
@@ -1451,7 +1521,7 @@ export default function App() {
           />
         )}
 
-        {/* ---------------------------------------------------------------- DETAILS */}
+        {}
         {view === "details" && selectedBook && (
           <BookDetailPage
             bookSlug={selectedBook.slug}
@@ -1475,7 +1545,7 @@ export default function App() {
           />
         )}
 
-        {/* ---------------------------------------------------------------- CHECKOUT */}
+        {}
         {view === "checkout" && (
           <CheckoutView
             books={books}
@@ -1489,7 +1559,7 @@ export default function App() {
           />
         )}
 
-        {/* ---------------------------------------------------------------- CONFIRMATION */}
+        {}
         {view === "confirmation" && (
           <div className="max-w-[640px] mx-auto px-xl py-5xl flex flex-col items-center text-center gap-xl animate-rise">
             <span className="inline-flex items-center justify-center w-16 h-16 rounded-corner-full bg-brand-tertiary text-brand-primary">
@@ -1518,7 +1588,7 @@ export default function App() {
           </div>
         )}
 
-        {/* ---------------------------------------------------------------- LIBRARY */}
+        {}
         {view === "library" && (
           <div className="max-w-[1320px] mx-auto px-xl md:px-2xl py-3xl flex flex-col gap-2xl animate-fade">
             <div className="flex items-end justify-between gap-lg flex-wrap">
@@ -1564,7 +1634,7 @@ export default function App() {
               )}
             </div>
 
-            {/* Stats */}
+            {}
             {libraryBooks.length > 0 && (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-lg">
                 {[
@@ -1702,7 +1772,7 @@ export default function App() {
               </div>
             )}
 
-            {/* Historique des commandes */}
+            {}
             {orders.length > 0 && (
               <section
                 className="flex flex-col gap-lg mt-2xl"
@@ -1766,7 +1836,7 @@ export default function App() {
         )}
       </main>
 
-      {/* Footer — 4-column with newsletter (maquette skeleton) */}
+      {}
       <footer className="bg-[#1a0f0c] text-white/70 mt-auto rounded-t-corner-xl">
         <div className="max-w-[1320px] mx-auto px-xl md:px-2xl py-4xl grid md:grid-cols-4 gap-2xl">
           <div className="flex flex-col gap-md">
@@ -1880,7 +1950,7 @@ export default function App() {
         </div>
       </footer>
 
-      {/* ---------------------------------------------------------------- CART DRAWER */}
+      {}
       {cartOpen && (
         <div
           className="fixed inset-0 z-50 flex justify-end"
@@ -2033,7 +2103,7 @@ export default function App() {
                     iconEnd={<ArrowRight className="w-4 h-4" />}
                     onClick={() => {
                       setCartOpen(false)
-                      setView("checkout")
+                      go("checkout")
                     }}
                   >
                     Passer commande
@@ -2054,7 +2124,7 @@ export default function App() {
         </div>
       )}
 
-      {/* ---------------------------------------------------------------- RESUME PROMPT */}
+      {}
       {resumePrompt && (
         <div
           className="fixed inset-0 z-[70] flex items-center justify-center px-xl"
@@ -2107,7 +2177,7 @@ export default function App() {
         </div>
       )}
 
-      {/* ---------------------------------------------------------------- TOAST */}
+      {}
       {toast && (
         <div
           className="fixed bottom-xl left-1/2 -translate-x-1/2 z-[60] animate-rise"
@@ -2203,7 +2273,6 @@ function CheckoutView({
 }) {
   const [form, setForm] = useState({ name: "", email: "", phone: "" })
   const [provider, setProvider] = useState("orange")
-  // Wizard step within checkout: 1 = Informations, 2 = Paiement.
   const [step, setStep] = useState<1 | 2>(1)
   const providers = [
     { id: "orange", label: "Orange Money" },
@@ -2218,11 +2287,14 @@ function CheckoutView({
   const valid = infoValid
   const steps = [
     { n: 1, label: "Panier", done: true },
-    { n: 2, label: "Informations", done: step > 1 },
+    {
+      n: 2,
+      label: "Informations",
+      done: step > 1,
+    },
     { n: 3, label: "Paiement", done: false },
     { n: 4, label: "Confirmation", done: false },
   ]
-  // Map wizard step (1/2) onto the visible stepper positions (2 = Informations, 3 = Paiement).
   const activeStepPos = step === 1 ? 2 : 3
 
   if (cartItems.length === 0) {
@@ -2255,7 +2327,7 @@ function CheckoutView({
         Finaliser la commande
       </h1>
 
-      {/* Wizard stepper */}
+      {}
       <ol
         className="flex items-center gap-xs md:gap-md mb-2xl"
         aria-label="Étapes de la commande"
@@ -2479,11 +2551,6 @@ function CheckoutView({
   )
 }
 
-/* ==================================================================== *
- * Back-office admin (Phase 1) — catalogue management, orders & stats.
- * Runs in its own full-screen shell, separate from the storefront chrome.
- * ==================================================================== */
-
 type AdminTab = "dashboard" | "catalog" | "orders"
 
 const ORDER_STATUS: Record<OrderStatus, OrderStatusMeta> = {
@@ -2575,13 +2642,14 @@ function AdminView({
   const topBooks = useMemo(
     () =>
       [...books]
-        .map((b) => ({ book: b, units: unitsByBook.get(b.id) ?? 0 }))
+        .map((b) => ({
+          book: b,
+          units: unitsByBook.get(b.id) ?? 0,
+        }))
         .sort((a, b) => b.units - a.units)
         .slice(0, 5),
     [books, unitsByBook],
   )
-
-  // Monthly revenue for the bar chart — last 6 months, from paid/pending orders.
   const monthlySales = useMemo(() => {
     const now = new Date()
     const buckets: SalesBucket[] = []
@@ -2606,8 +2674,6 @@ function AdminView({
     return buckets
   }, [orders])
   const maxMonthly = Math.max(1, ...monthlySales.map((m) => m.value))
-
-  // Revenue share per category, for the breakdown bars.
   const categorySales = useMemo(() => {
     const priceById = new Map(books.map((b) => [b.id, b.price]))
     const catById = new Map(books.map((b) => [b.id, b.category]))
@@ -2679,7 +2745,7 @@ function AdminView({
 
   return (
     <div className="min-h-screen bg-surface-secondary-bg lg:grid lg:grid-cols-[264px_1fr]">
-      {/* Sidebar */}
+      {}
       <aside className="lg:sticky lg:top-0 lg:h-screen bg-surface-bg border-b lg:border-b-0 lg:border-r border-border-secondary flex lg:flex-col">
         <div className="flex lg:flex-col lg:h-full w-full">
           <div className="hidden lg:flex items-center gap-md px-xl h-[72px] border-b border-border-secondary">
@@ -2733,7 +2799,7 @@ function AdminView({
         </div>
       </aside>
 
-      {/* Main */}
+      {}
       <div className="flex flex-col min-h-screen">
         <header className="sticky top-0 z-30 bg-surface-bg/85 backdrop-blur-xl border-b border-border-secondary">
           <div className="px-xl md:px-2xl h-[72px] flex items-center justify-between gap-lg">
@@ -2766,7 +2832,7 @@ function AdminView({
         </header>
 
         <main className="flex-1 px-xl md:px-2xl py-2xl animate-fade">
-          {/* ------------------------------------------------ DASHBOARD */}
+          {}
           {tab === "dashboard" && (
             <div className="flex flex-col gap-2xl max-w-[1100px]">
               <div className="grid grid-cols-2 xl:grid-cols-4 gap-lg">
@@ -2794,7 +2860,7 @@ function AdminView({
               </div>
 
               <div className="grid lg:grid-cols-[1.4fr_1fr] gap-2xl">
-                {/* Sales bar chart */}
+                {}
                 <section className="rounded-corner-lg bg-surface-bg border border-border-secondary p-xl">
                   <div className="flex items-center justify-between mb-xl">
                     <h2 className="text-label font-semibold text-text-primary">
@@ -2831,7 +2897,7 @@ function AdminView({
                   </div>
                 </section>
 
-                {/* Category breakdown */}
+                {}
                 <section className="rounded-corner-lg bg-surface-bg border border-border-secondary p-xl">
                   <h2 className="text-label font-semibold text-text-primary mb-xl">
                     Répartition par catégorie
@@ -2866,7 +2932,7 @@ function AdminView({
               </div>
 
               <div className="grid lg:grid-cols-[1.4fr_1fr] gap-2xl">
-                {/* Recent orders */}
+                {}
                 <section className="rounded-corner-lg bg-surface-bg border border-border-secondary overflow-hidden">
                   <div className="flex items-center justify-between px-xl py-lg border-b border-border-secondary">
                     <h2 className="text-label font-semibold text-text-primary">
@@ -2904,7 +2970,7 @@ function AdminView({
                   </ul>
                 </section>
 
-                {/* Top titles */}
+                {}
                 <section className="rounded-corner-lg bg-surface-bg border border-border-secondary overflow-hidden">
                   <div className="px-xl py-lg border-b border-border-secondary">
                     <h2 className="text-label font-semibold text-text-primary">
@@ -2947,7 +3013,7 @@ function AdminView({
             </div>
           )}
 
-          {/* ------------------------------------------------ CATALOG */}
+          {}
           {tab === "catalog" && (
             <div className="flex flex-col gap-lg max-w-[1100px]">
               <div className="flex items-center justify-between gap-lg">
@@ -3116,7 +3182,7 @@ function AdminView({
             </div>
           )}
 
-          {/* ------------------------------------------------ ORDERS */}
+          {}
           {tab === "orders" && (
             <div className="flex flex-col gap-lg max-w-[1100px]">
               <div

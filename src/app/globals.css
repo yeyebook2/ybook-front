@@ -1,0 +1,227 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700;800&family=Inter:ital,wght@0,400..700;1,400..600&family=Fraunces:ital,opsz,wght@0,9..144,400..600;1,9..144,400..500&display=swap');
+@import 'tailwindcss';
+
+/* ------------------------------------------------------------------ *
+ * Design tokens — YBook
+ * The Astra kit defines its color/space CSS variables on :root, but the
+ * Tailwind build only emits spacing/size utilities for tokens declared in
+ * @theme. We mirror the kit's scale here so utilities like px-2xl, p-4xl,
+ * mb-2xl and text-display resolve consistently, and add the refined
+ * geometric + editorial faces used across the store.
+ * ------------------------------------------------------------------ */
+@theme {
+  /* Poppins carries the geometric YBook wordmark tone into headings;
+     Inter keeps UI/body crisp; Fraunces is reserved for reading prose. */
+  --font-sans: "Inter", system-ui, sans-serif;
+  --font-serif: "Poppins", "Inter", system-ui, sans-serif;
+  --font-reading: "Fraunces", Georgia, serif;
+
+  /* Spacing scale (aligned with the kit, extended with 3xl/4xl for air) */
+  --spacing-xs: 4px;
+  --spacing-sm: 6px;
+  --spacing-md: 8px;
+  --spacing-lg: 12px;
+  --spacing-xl: 16px;
+  --spacing-2xl: 24px;
+  --spacing-3xl: 40px;
+  --spacing-4xl: 64px;
+  --spacing-5xl: 96px;
+
+  /* Radius (mirrors --corner-*) */
+  --radius-corner-sm: 4px;
+  --radius-corner-md: 8px;
+  --radius-corner-lg: 16px;
+  --radius-corner-xl: 24px;
+  --radius-corner-full: 999px;
+
+  /* Typography step above the kit's text-title */
+  --text-display: 3.25rem;
+  --text-display--line-height: 1.05;
+
+  /* Secondary accent — YBook bordeaux (charte §2.2). Same hue family as the
+     rose so the two read as one confident palette; reserved for premium
+     titles, brand marks and nav hover — never as a button fill. Registered as
+     Tailwind color tokens so bg-accent / text-accent / border-accent /
+     bg-accent-tertiary utilities are emitted. */
+  --color-accent: #b84870;         /* --y-secondary-500 */
+  --color-accent-hover: #572234;   /* --y-secondary-700 (brun-bordeaux) */
+  --color-accent-dark: #572234;
+  --color-accent-tertiary: #f7e4ea; /* pastel bordeaux halo */
+  --color-on-accent: #ffffff;
+
+  /* Register the kit's semantic colours as Tailwind tokens (aliased to the
+     :root vars below) so EVERY text-/bg-/border- brand utility is emitted —
+     the prebuilt kit CSS only ships a subset, which left shades like
+     text-brand-secondary / text-brand-dark resolving to nothing (and, on a
+     white/dark ground, invisible text). */
+  --color-brand-primary: var(--brand-primary);
+  --color-brand-hover: var(--brand-hover);
+  --color-brand-dark: var(--brand-dark);
+  --color-brand-secondary: var(--brand-secondary);
+  --color-brand-tertiary: var(--brand-tertiary);
+  --color-brand-muted: var(--brand-muted);
+  --color-on-brand: var(--on-brand);
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-tertiary: var(--text-tertiary);
+  --color-surface-bg: var(--surface-bg);
+  --color-surface-secondary-bg: var(--surface-secondary-bg);
+  --color-surface-hover: var(--surface-hover);
+  --color-border-primary: var(--border-primary);
+  --color-border-secondary: var(--border-secondary);
+}
+
+/* ------------------------------------------------------------------ *
+ * Palette override — YBook "white & magenta" premium theme.
+ * The Astra kit ships a violet brand on :root (imported before this
+ * file). We re-map its tokens to a single magenta/rose family drawn
+ * from the YBook mark so the whole kit — and every utility that reads
+ * these vars — turns magenta. Text uses a deep plum "ink" rather than
+ * pure black; the brand tone is deepened just enough to clear WCAG AA
+ * (4.5:1 body, 3:1 large/UI) as a button ground with white text.
+ * ------------------------------------------------------------------ */
+:root {
+  /* Brand rose — charte §2.1. #E04070 carries action & selection. The ramp
+     stays magenta-rose at every step and NEVER slides to blood-red
+     (#D80000) or red-black (#5F0000) — the G/R·B/R ratio of the mark is
+     preserved so hover/active read as deep rose-bordeaux, not scarlet. */
+  --brand-primary: #e04070;   /* --y-primary-500 (action-bg) */
+  --brand-hover: #b23259;     /* --y-primary-600 (action-bg-hover) */
+  --brand-dark: #7f243f;      /* --y-primary-700 (action-bg-active / deep ink) */
+  --brand-secondary: #e15888; /* --y-secondary-300 — light rose accents on dark */
+  --brand-tertiary: #fceef0;  /* --y-primary-tint-100 — soft rose halo */
+  --brand-muted: #b84870;     /* --y-secondary-500 bordeaux — premium titles / nav hover */
+  --on-brand: #ffffff;
+
+  /* Warm neutrals — charte §2.3. Ivory paper + warm ink (hue 30), never a
+     cold grey, so the whole terrain reads like warm paper under the rose. */
+  --text-primary: #100908;    /* --y-ink-900 (~18:1 on ivory) */
+  --text-secondary: #574c47;  /* warm meta, ≥4.5:1 */
+  --text-tertiary: #6b615c;   /* --y-ink-600 muted, ≥4.5:1 */
+
+  /* Surfaces — ivory canvas, elevated cards a touch lighter, sunken warmer. */
+  --surface-bg: #fffdf9;          /* --canvas-elevated (cards, header) */
+  --surface-secondary-bg: #fff6eb; /* --canvas (ivory page ground) */
+  --surface-hover: #f0e2d8;        /* --canvas-sunken (hover / inputs) */
+
+  /* Hairlines — warm ink, charte §3.1 (never >1px in use). */
+  --border-primary: #c1b5ac;   /* --border-strong (--y-ink-400) */
+  --border-secondary: #f0e2d8; /* --border-subtle (--y-ink-200) */
+
+  /* Status — charte §2.4. Calm, low-chroma so they never rival the rose;
+     the error is a marque-coherent rose-red, not a foreign scarlet. */
+  --success: #2e8b57;
+  --warning: #8a5a26; /* ambre assombri pour l'AA texte sur ivoire */
+  --danger: #c13f4e;
+}
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Visible, in-brand focus ring for keyboard users everywhere */
+  :where(a, button, input, textarea, select, [tabindex]):focus-visible {
+    outline: 2px solid var(--brand-primary);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    background-color: var(--surface-secondary-bg, #fafafb);
+    color: var(--text-primary);
+  }
+
+  ::selection {
+    background: color-mix(in oklab, var(--brand-primary) 22%, transparent);
+    color: var(--brand-dark);
+  }
+
+  /* Hide scrollbars until scrolling for a calmer, premium surface */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+  }
+  *:hover::-webkit-scrollbar-thumb {
+    background: color-mix(in oklab, var(--text-tertiary) 60%, transparent);
+  }
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: transparent;
+    border-radius: 999px;
+  }
+}
+
+/* Geometric display helper (YBook wordmark tone) */
+.font-serif {
+  font-family: var(--font-serif);
+  letter-spacing: -0.01em;
+}
+
+/* Editorial serif reserved for long-form reading */
+.font-reading {
+  font-family: var(--font-reading);
+}
+
+/* Subtle rise-in animation for surfaces */
+@keyframes riseIn {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-rise {
+  animation: riseIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes slideInRight {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+.animate-slide-in {
+  animation: slideInRight 0.32s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.animate-fade {
+  animation: fadeIn 0.25s ease both;
+}
+
+/* Comfortable measure + rhythm for long-form reading */
+.prose-reader p {
+  margin-bottom: 1.35em;
+}
+.prose-reader p:last-child {
+  margin-bottom: 0;
+}
+
+/* Skip link — hidden until focused */
+.skip-link {
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  z-index: 100;
+  transform: translateY(-160%);
+  transition: transform 0.2s ease;
+}
+.skip-link:focus {
+  transform: translateY(0);
+}
+
+/* Respect users who prefer reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

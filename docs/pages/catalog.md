@@ -53,9 +53,9 @@ Sur mobile, le panneau de filtres devient un tiroir modal. Sur desktop, il reste
 
 ## Mode preview
 
-Lorsque `VITE_API_BASE_URL` est absente, `useCatalog` utilise `PREVIEW_BOOKS` et applique localement la recherche, les filtres, le tri, les facettes et la pagination. Ce mode ne simule aucun paiement ni compte utilisateur ; il sert uniquement à vérifier l’interface et le flux d’ajout au panier.
+Lorsque `NEXT_PUBLIC_API_BASE_URL` est absente, `useCatalog` utilise `PREVIEW_BOOKS` et applique localement la recherche, les filtres, le tri, les facettes et la pagination. Ce mode ne simule aucun paiement ni compte utilisateur ; il sert uniquement à vérifier l’interface et le flux d’ajout au panier.
 
-Lorsque `VITE_API_BASE_URL` est présente, les données sont chargées par `GET /api/v1/books`. Le service utilise `credentials: "include"` pour rester compatible avec la stratégie de session retenue par le backend, même si le catalogue public reste accessible sans connexion.
+Lorsque `NEXT_PUBLIC_API_BASE_URL` est présente, les données sont chargées par `GET /api/v1/books`. Le service utilise `credentials: "include"` pour rester compatible avec la stratégie de session retenue par le backend, même si le catalogue public reste accessible sans connexion.
 
 ## Actions reçues de l’application
 

@@ -17,7 +17,7 @@ La réponse titres associés peut utiliser `{ items }` ou `{ books }` dans l’e
 
 ## Service frontend
 
-`src/features/book-details/book-details.api.ts` sépare explicitement les deux modes. Sans `VITE_API_BASE_URL`, `PREVIEW_BOOKS` fournit le livre, les chapitres, les avis de démonstration et les titres de même catégorie. Avec la variable d’environnement, les requêtes utilisent `/api/v1`, `credentials: "include"` et une erreur lisible en cas de réponse HTTP non valide.
+`src/features/book-details/book-details.api.ts` sépare explicitement les deux modes. Sans `NEXT_PUBLIC_API_BASE_URL`, `PREVIEW_BOOKS` fournit le livre, les chapitres, les avis de démonstration et les titres de même catégorie. Avec la variable d’environnement, les requêtes utilisent `/api/v1`, `credentials: "include"` et une erreur lisible en cas de réponse HTTP non valide.
 
 Le hook `useBookDetail` gère le chargement, l’erreur, le rechargement et l’ajout optimiste local d’un avis après le retour du service. La page ne possède pas de logique réseau directe. La page expose en outre un JSON-LD `Book` pour les métadonnées SEO, sans persister de données inventées.
 

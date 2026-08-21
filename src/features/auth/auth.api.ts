@@ -3,6 +3,7 @@ import {
   getPreviewSession,
   setPreviewSession,
 } from "./auth.session"
+import { getPublicApiBaseUrl } from "@/lib/runtime-env"
 import type {
   AuthApiResponse,
   AuthUser,
@@ -10,8 +11,7 @@ import type {
   RegisterFormValues,
 } from "./types"
 
-const API_BASE_URL = (import.meta.env
-  .VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, "")
+const API_BASE_URL = getPublicApiBaseUrl()
 const API_PREFIX = "/api/v1"
 const USE_PREVIEW_AUTH = !API_BASE_URL
 

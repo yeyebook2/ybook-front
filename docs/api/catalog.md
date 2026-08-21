@@ -82,7 +82,7 @@ La page Catalogue actuelle utilise uniquement `GET /api/v1/books`. La fiche livr
 
 ## Mode preview et erreurs
 
-En l’absence de `VITE_API_BASE_URL`, aucun appel réseau n’est réalisé. Le service applique les mêmes filtres et tris sur `PREVIEW_BOOKS`, calcule les compteurs de facettes et renvoie une réponse paginée équivalente.
+En l’absence de `NEXT_PUBLIC_API_BASE_URL`, aucun appel réseau n’est réalisé. Le service applique les mêmes filtres et tris sur `PREVIEW_BOOKS`, calcule les compteurs de facettes et renvoie une réponse paginée équivalente.
 
 En production, les requêtes utilisent `credentials: "include"`. Une réponse HTTP non réussie est convertie en erreur lisible pour `CatalogErrorState`. Le backend devra idéalement renvoyer un champ `message` pour les erreurs fonctionnelles ; à défaut, le frontend affiche un message générique.
 

@@ -70,6 +70,6 @@ Les réponses d’erreur devront idéalement suivre une structure normalisée av
 
 ## Implémentation frontend
 
-Le service est situé dans `src/features/auth/auth.api.ts`. Lorsque `VITE_API_BASE_URL` est absente, les opérations login et register utilisent le mode preview et enregistrent uniquement un utilisateur de démonstration dans `sessionStorage`. Aucun mot de passe ni token n’y est stocké.
+Le service est situé dans `src/features/auth/auth.api.ts`. Lorsque `NEXT_PUBLIC_API_BASE_URL` est absente, les opérations login et register utilisent le mode preview et enregistrent uniquement un utilisateur de démonstration dans `sessionStorage`. Aucun mot de passe ni token n’y est stocké.
 
-Lorsque `VITE_API_BASE_URL` est présente, le service appelle les routes officielles sous `/api/v1`, transmet le payload conforme et appelle `GET /api/v1/auth/me` au démarrage pour restaurer l’accès au dashboard. `logout()` appelle `POST /api/v1/auth/logout`.
+Lorsque `NEXT_PUBLIC_API_BASE_URL` est présente, le service appelle les routes officielles sous `/api/v1`, transmet le payload conforme et appelle `GET /api/v1/auth/me` au démarrage pour restaurer l’accès au dashboard. `logout()` appelle `POST /api/v1/auth/logout`.

@@ -1,4 +1,5 @@
 import { PREVIEW_BOOKS } from "@/features/catalog/catalog.preview"
+import { getPublicApiBaseUrl } from "@/lib/runtime-env"
 import { mapBackendBook } from "@/features/catalog/catalog.api"
 import type {
   BackendBook,
@@ -14,8 +15,7 @@ import type {
   ReviewFormValues,
 } from "./types"
 
-const API_BASE_URL = (import.meta.env
-  .VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, "")
+const API_BASE_URL = getPublicApiBaseUrl()
 const API_PREFIX = "/api/v1"
 const USE_PREVIEW_DETAIL = !API_BASE_URL
 

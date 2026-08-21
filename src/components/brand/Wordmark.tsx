@@ -1,4 +1,4 @@
-import ybookSymbol from "@/imports/ybook-symbol-primary-1024px.png"
+const ybookSymbol = "/brand/ybook-symbol-primary.png"
 
 type WordmarkProps = {
   className?: string

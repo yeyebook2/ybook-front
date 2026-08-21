@@ -52,7 +52,7 @@ La bibliothèque attend `{ items: [LibraryItem], total }`. La progression accept
 
 ## Mode preview
 
-Si `VITE_API_BASE_URL` n’est pas défini, le service renvoie un jeu de données preview pour permettre la vérification du rendu. Ce jeu n’est jamais utilisé comme source de vérité en production.
+Si `NEXT_PUBLIC_API_BASE_URL` n’est pas défini, le service renvoie un jeu de données preview pour permettre la vérification du rendu. Ce jeu n’est jamais utilisé comme source de vérité en production.
 
 ## Points à confirmer avec le backend
 

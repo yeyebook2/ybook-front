@@ -10,8 +10,8 @@
 
 | Contrôle | Résultat | Observation |
 |---|---|---|
-| Build de production | Conforme | `pnpm run build` réussit avec Vite 8 après les corrections. |
-| Formatage | Conforme | `pnpm exec oxfmt --check` passe sur les fichiers d’authentification, de dashboard, `src/App.tsx` et `vite.config.ts`. |
+| Build de production | Conforme | `pnpm run build` réussit avec Next.js 14.2.35 et génère les onze routes App Router. |
+| Formatage | Conforme | `pnpm exec oxfmt --check` passe sur les features, les routes App Router et `src/App.tsx`; la configuration Vite a été supprimée. |
 | Whitespace Git | Conforme | `git diff --check` ne signale aucune erreur avant le commit. |
 | Modularité | Conforme | Shell, champs, champ mot de passe, bouton de soumission, consentements, formulaires, pages, types, API et gardes sont séparés. |
 | Formulaire d’inscription | Conforme | Prénom, nom, e-mail, téléphone, mot de passe, confirmation et trois consentements sont distincts. Les consentements CGU et confidentialité sont obligatoires ; le marketing est facultatif. |
@@ -69,7 +69,7 @@ Le parcours suivant a été vérifié sur la prévisualisation du dépôt :
 
 ## Limites et intégrations restantes
 
-Le dépôt ne contient pas encore de backend réel configuré. Lorsque `VITE_API_BASE_URL` sera fournie, les réponses du serveur devront respecter les enveloppes documentées dans [`docs/api/authentication.md`](api/authentication.md) et [`docs/api/dashboard.md`](api/dashboard.md), ou être ajoutées explicitement à l’adaptateur avant intégration.
+Le dépôt ne contient pas encore de backend réel configuré. Lorsque `NEXT_PUBLIC_API_BASE_URL` sera fournie, les réponses du serveur devront respecter les enveloppes documentées dans [`docs/api/authentication.md`](api/authentication.md) et [`docs/api/dashboard.md`](api/dashboard.md), ou être ajoutées explicitement à l’adaptateur avant intégration.
 
 La gestion de session réelle devra être finalisée côté backend avec des cookies sécurisés ou le mécanisme retenu par l’architecture globale. Il faudra également confirmer la forme des erreurs `401`, `409`, `422` et `5xx`, la vérification d’adresse e-mail, la rotation ou l’expiration des sessions et la politique exacte de déconnexion multi-appareils.
 
@@ -80,7 +80,7 @@ Le panier du dashboard reste volontairement dépendant du catalogue déjà charg
 ```bash
 pnpm install --ignore-scripts
 pnpm run build
-pnpm exec oxfmt --check src/features/auth src/features/dashboard src/App.tsx vite.config.ts
+pnpm exec oxfmt --check src/features/auth src/features/dashboard src/App.tsx
 git diff --check
 ```
 

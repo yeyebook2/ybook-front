@@ -128,7 +128,7 @@ export const PREVIEW_BOOKS: Book[] = [
     language: "fr",
     publishedAt: "2026-06-08",
     cover:
-      "https://images.unsplash.com/photo-1476275466078-4007374efac4?w=800&h=1200&fit=crop&auto=format",
+      "https://images.unsplash.com/photo-1544947950-fa07a98d237f?w=800&h=1200&fit=crop&auto=format",
     description:
       "Sous forme épistolaire, Ramatoulaye, fraîchement veuve, se confie à sa meilleure amie Aïssatou. Une réflexion profonde et lumineuse sur la condition féminine, le mariage et la polygamie au Sénégal.",
     chapters: buildChapters(

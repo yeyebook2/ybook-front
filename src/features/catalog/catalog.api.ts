@@ -1,4 +1,5 @@
 import { CATALOG_CATEGORIES, CATALOG_LANGUAGES } from "./catalog.constants"
+import { getPublicApiBaseUrl } from "@/lib/runtime-env"
 import type {
   BackendBook,
   BackendCatalogResponse,
@@ -9,8 +10,7 @@ import type {
   CatalogResponse,
 } from "./types"
 
-const API_BASE_URL = (import.meta.env
-  .VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, "")
+const API_BASE_URL = getPublicApiBaseUrl()
 const API_PREFIX = "/api/v1"
 const USE_PREVIEW_DATA = !API_BASE_URL
 
