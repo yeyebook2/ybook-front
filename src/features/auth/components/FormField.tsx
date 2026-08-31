@@ -46,7 +46,7 @@ export function FormField({
           {...inputProps}
         />
         {suffix ? (
-          <div className="absolute right-lg top-1/2 -translate-y-1/2">
+          <div className="absolute right-lg top-[23px] -translate-y-1/2">
             {suffix}
           </div>
         ) : null}
