@@ -2,10 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 
 import { DEFAULT_CATALOG_FILTERS } from "../catalog.constants"
 import { getCatalog } from "../catalog.api"
-import type { Book, CatalogFilters, CatalogResponse } from "../types"
+import type { CatalogFilters, CatalogResponse } from "../types"
 
 type UseCatalogOptions = {
-  previewBooks: Book[]
   initialCategory?: string
   initialSearch?: string
 }
@@ -19,7 +18,6 @@ const EMPTY_RESPONSE: CatalogResponse = {
 }
 
 export function useCatalog({
-  previewBooks,
   initialCategory,
   initialSearch = "",
 }: UseCatalogOptions) {
@@ -61,7 +59,7 @@ export function useCatalog({
     const timeout = window.setTimeout(() => {
       setLoading(true)
       setError(null)
-      void getCatalog(filters, previewBooks)
+      void getCatalog(filters)
         .then((response) => {
           if (!active) return
           setData(response)
@@ -84,7 +82,7 @@ export function useCatalog({
       active = false
       window.clearTimeout(timeout)
     }
-  }, [filters, previewBooks, reloadToken])
+  }, [filters, reloadToken])
 
   const updateFilters = useCallback((patch: Partial<CatalogFilters>) => {
     setFilters((current) => ({ ...current, ...patch }))

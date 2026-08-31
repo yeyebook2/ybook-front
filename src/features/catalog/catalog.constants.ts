@@ -55,6 +55,3 @@ export const DEFAULT_CATALOG_FILTERS = {
 }
 
 export const CATALOG_PAGE_SIZE = 8
-
-export const FALLBACK_COVER =
-  "https://images.unsplash.com/photo-1544947950-fa07a98d237f?w=800&h=1200&fit=crop&auto=format"

@@ -70,19 +70,18 @@ import {
   getCurrentUser,
   logout,
 } from "@/features/auth/auth.api"
-import { getPreviewSession } from "@/features/auth/auth.session"
 import type { AuthApiResponse, AuthUser } from "@/features/auth/types"
 import { DashboardPage } from "@/features/dashboard/pages/DashboardPage"
 import type { DashboardBook } from "@/features/dashboard/types"
 import { loadCart, MAX_CART_QUANTITY, saveCart } from "@/features/cart"
 import type { CartItem } from "@/features/cart"
 import { CatalogPage } from "@/features/catalog/pages/CatalogPage"
-import { BookDetailPage } from "@/features/book-details"
+import { getCatalog } from "@/features/catalog/catalog.api"
 import {
-  buildChapters,
-  PREVIEW_BOOKS,
-} from "@/features/catalog/catalog.preview"
-import { CATALOG_CATEGORIES } from "@/features/catalog/catalog.constants"
+  CATALOG_CATEGORIES,
+  DEFAULT_CATALOG_FILTERS,
+} from "@/features/catalog/catalog.constants"
+import { BookDetailPage } from "@/features/book-details"
 import { formatPrice, handleCoverError } from "@/features/catalog/catalog.utils"
 import { BookCard } from "@/features/catalog/components/BookCard"
 import { RatingStars } from "@/features/catalog/components/RatingStars"
@@ -176,78 +175,6 @@ const PROVIDER_LABELS: Record<string, string> = {
   wave: "Wave",
   moov: "Moov Money",
 }
-const SEED_ORDERS: Order[] = [
-  {
-    id: "YB-2418",
-    customer: "Aminata Diallo",
-    phone: "+225 07 21 44 08",
-    provider: "orange",
-    items: [
-      { bookId: 4, quantity: 1 },
-      { bookId: 2, quantity: 1 },
-    ],
-    total: 5500,
-    date: "2026-08-14",
-    status: "paid",
-  },
-  {
-    id: "YB-2417",
-    customer: "Kofi Mensah",
-    phone: "+233 24 55 12 90",
-    provider: "mtn",
-    items: [{ bookId: 1, quantity: 1 }],
-    total: 2500,
-    date: "2026-08-14",
-    status: "paid",
-  },
-  {
-    id: "YB-2416",
-    customer: "Fatou Ndiaye",
-    phone: "+221 77 902 33 71",
-    provider: "wave",
-    items: [
-      { bookId: 5, quantity: 1 },
-      { bookId: 8, quantity: 1 },
-    ],
-    total: 5000,
-    date: "2026-08-13",
-    status: "pending",
-  },
-  {
-    id: "YB-2415",
-    customer: "Ibrahim Traoré",
-    phone: "+226 70 18 62 05",
-    provider: "moov",
-    items: [{ bookId: 3, quantity: 1 }],
-    total: 2000,
-    date: "2026-08-12",
-    status: "paid",
-  },
-  {
-    id: "YB-2414",
-    customer: "Chantal Nguema",
-    phone: "+241 06 44 12 88",
-    provider: "orange",
-    items: [{ bookId: 7, quantity: 1 }],
-    total: 2700,
-    date: "2026-08-11",
-    status: "refunded",
-  },
-  {
-    id: "YB-2413",
-    customer: "Yacouba Cissé",
-    phone: "+225 05 66 90 41",
-    provider: "orange",
-    items: [
-      { bookId: 6, quantity: 1 },
-      { bookId: 4, quantity: 1 },
-    ],
-    total: 5300,
-    date: "2026-08-10",
-    status: "paid",
-  },
-]
-
 const PROGRESS_KEY = "ybook-reading-progress"
 
 function loadProgress(): Progress {
@@ -262,28 +189,19 @@ function loadProgress(): Progress {
 export default function App({
   initialView = "home",
   initialBookSlug,
-  initialReaderSlug,
+  initialReaderSlug: _initialReaderSlug,
 }: {
   initialView?: View
   initialBookSlug?: string
   initialReaderSlug?: string
 }) {
-  const initialBookId = initialBookSlug
-    ? (PREVIEW_BOOKS.find((book) => book.slug === initialBookSlug)?.id ?? null)
-    : null
-  const initialReaderId = initialReaderSlug
-    ? (PREVIEW_BOOKS.find((book) => book.slug === initialReaderSlug)?.id ??
-      null)
-    : null
   const router = useRouter()
   const [view, setView] = useState<View>(initialView)
   const [sessionUser, setSessionUser] = useState<AuthUser | null>(null)
   const [sessionChecked, setSessionChecked] = useState(false)
-  const [books, setBooks] = useState<Book[]>(PREVIEW_BOOKS)
-  const [orders, setOrders] = useState<Order[]>(SEED_ORDERS)
-  const [selectedBookId, setSelectedBookId] = useState<number | null>(
-    initialBookId,
-  )
+  const [books, setBooks] = useState<Book[]>([])
+  const [orders, setOrders] = useState<Order[]>([])
+  const [selectedBookId, setSelectedBookId] = useState<number | null>(null)
   const [cartItems, setCartItems] = useState<CartItem[]>([])
   const [cartHydrated, setCartHydrated] = useState(false)
   const [library, setLibrary] = useState<number[]>([])
@@ -300,9 +218,7 @@ export default function App({
   const [readerLeading, setReaderLeading] = useState(1.75)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [bookmarks, setBookmarks] = useState<Record<number, number[]>>({})
-  const [readerBookId, setReaderBookId] = useState<number | null>(
-    initialReaderId,
-  )
+  const [readerBookId, setReaderBookId] = useState<number | null>(null)
   const [currentChapter, setCurrentChapter] = useState(0)
   const [chapterListOpen, setChapterListOpen] = useState(false)
   const [progress, setProgress] = useState<Progress>({})
@@ -333,14 +249,49 @@ export default function App({
 
   useEffect(() => {
     let active = true
+    void getCatalog({
+      ...DEFAULT_CATALOG_FILTERS,
+      limit: 20,
+      sortBy: "published_at",
+      sortOrder: "desc",
+    })
+      .then((response) => {
+        if (!active) return
+        setBooks(response.items.map((book) => ({ ...book, chapters: [] })))
+      })
+      .catch((reason: unknown) => {
+        if (!active) return
+        setBooks([])
+        setToast({
+          message:
+            reason instanceof Error
+              ? reason.message
+              : "Impossible de charger les livres de l’accueil.",
+          variant: "error",
+        })
+      })
+
+    return () => {
+      active = false
+    }
+  }, [])
+  useEffect(() => {
+    let active = true
     void getCurrentUser()
       .then((user) => {
         if (!active) return
         setSessionUser(user)
       })
-      .catch(() => {
+      .catch((reason: unknown) => {
         if (!active) return
         setSessionUser(null)
+        setToast({
+          message:
+            reason instanceof Error
+              ? reason.message
+              : "Impossible de vérifier votre session.",
+          variant: "error",
+        })
       })
       .finally(() => {
         if (active) setSessionChecked(true)
@@ -409,11 +360,17 @@ export default function App({
 
   const openBook = (id: number) => {
     const book = books.find((candidate) => candidate.id === id)
+    if (!book?.slug) {
+      setToast({
+        message: "Impossible d’ouvrir ce livre : ses données sont indisponibles.",
+        variant: "error",
+      })
+      return
+    }
     setSelectedBookId(id)
     setView("details")
-    router.push(book?.slug ? `/books/${book.slug}` : "/catalog")
+    router.push(`/books/${book.slug}`)
   }
-
   const openCatalog = (category?: string) => {
     setActiveCategory(category ?? "Tous")
     setView("catalog")
@@ -581,9 +538,9 @@ export default function App({
   }
 
   const visibleBooks = books.filter((b) => b.published !== false)
-  const featured = visibleBooks[1] ?? visibleBooks[0]
+  const featured = visibleBooks[0]
   const heroCovers = visibleBooks.slice(0, 3)
-  const newReleases = visibleBooks.slice(2, 6)
+  const newReleases = visibleBooks.slice(0, 4)
   const bestSellers = [...visibleBooks]
     .sort((a, b) => b.reviews - a.reviews)
     .slice(0, 10)
@@ -1218,7 +1175,7 @@ export default function App({
             >
               <Avatar
                 type="image"
-                src="https://images.unsplash.com/photo-1531384441138-2736e62e0919?w=100&h=100&fit=crop&auto=format"
+                src="/brand/ybook-symbol-primary.png"
                 size="medium"
                 shape="circle"
               />
@@ -1267,7 +1224,14 @@ export default function App({
                       <ArrowRight className="w-4 h-4" aria-hidden="true" />
                     </button>
                     <button
-                      onClick={() => openBook(featured.id)}
+                      onClick={() => {
+                        if (featured) openBook(featured.id)
+                        else
+                          setToast({
+                            message: "Aucun livre à la une n’est disponible.",
+                            variant: "error",
+                          })
+                      }}
                       className="inline-flex items-center gap-sm px-xl py-md rounded-corner-md bg-white/10 border border-white/45 text-white font-semibold hover:bg-white/20 transition-colors cursor-pointer"
                     >
                       <BookOpen className="w-4 h-4" aria-hidden="true" /> Livre
@@ -1517,7 +1481,6 @@ export default function App({
         {}
         {view === "catalog" && (
           <CatalogPage
-            books={books}
             initialCategory={
               activeCategory === "Tous" ? undefined : activeCategory
             }
@@ -1526,6 +1489,7 @@ export default function App({
             onSearchChange={setSearchQuery}
             onOpenBook={(book) => openBook(book.id)}
             onAddToCart={(book) => addToCart(book.id)}
+            onError={(message) => setToast({ message, variant: "error" })}
           />
         )}
 
@@ -1533,7 +1497,7 @@ export default function App({
         {view === "details" && selectedBook && (
           <BookDetailPage
             bookSlug={selectedBook.slug}
-            fallbackBook={selectedBook}
+            fallbackBook={undefined}
             isAuthenticated={Boolean(sessionUser)}
             owned={ownsSelected}
             progress={progress[selectedBook.id]}
@@ -3393,14 +3357,7 @@ function BookForm({
     const description =
       form.description.trim() ||
       `Un titre de ${form.author.trim()} disponible en lecture en ligne sur YéYéBook.`
-    const chapters =
-      book?.chapters ??
-      buildChapters(form.title.trim(), form.author.trim(), description, [
-        "la mémoire du continent",
-        "la voix des anciens",
-        "le poids du choix",
-        "l'espoir qui perce",
-      ])
+    const chapters = book?.chapters ?? []
     onSave({
       id,
       title: form.title.trim(),
@@ -3409,11 +3366,9 @@ function BookForm({
       price: Number(form.price),
       pages: Number(form.pages) || 120,
       year: Number(form.year) || new Date().getFullYear(),
-      rating: book?.rating ?? 4.5,
+      rating: book?.rating ?? 0,
       reviews: book?.reviews ?? 0,
-      cover:
-        form.cover.trim() ||
-        "https://images.unsplash.com/photo-1544947950-fa07a98d237f?w=800&h=1200&fit=crop&auto=format",
+      cover: form.cover.trim(),
       description,
       chapters,
       published: book?.published ?? true,

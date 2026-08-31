@@ -1,8 +1,3 @@
-import {
-  clearPreviewSession,
-  getPreviewSession,
-  setPreviewSession,
-} from "./auth.session"
 import { getPublicApiBaseUrl } from "@/lib/runtime-env"
 import type {
   AuthApiResponse,
@@ -13,7 +8,6 @@ import type {
 
 const API_BASE_URL = getPublicApiBaseUrl()
 const API_PREFIX = "/api/v1"
-const USE_PREVIEW_AUTH = !API_BASE_URL
 
 type BackendAuthPayload = {
   user?: {
@@ -30,8 +24,13 @@ type BackendAuthPayload = {
   success?: boolean
 }
 
+function requireApiBaseUrl(): string {
+  if (!API_BASE_URL) throw new Error("L’URL de l’API n’est pas configurée.")
+  return API_BASE_URL
+}
+
 async function request<T>(path: string, init: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${API_PREFIX}${path}`, {
+  const response = await fetch(`${requireApiBaseUrl()}${API_PREFIX}${path}`, {
     ...init,
     credentials: "include",
     headers: {
@@ -87,28 +86,7 @@ function adaptAuthResponse(
   }
 }
 
-function persistPreviewResponse(response: AuthApiResponse) {
-  if (response.mode === "preview" && response.user) {
-    setPreviewSession(response.user)
-  }
-  return response
-}
-
 export async function login(values: LoginFormValues): Promise<AuthApiResponse> {
-  if (USE_PREVIEW_AUTH) {
-    return persistPreviewResponse({
-      ok: true,
-      mode: "preview",
-      message: "Connexion validée pour la prévisualisation.",
-      user: {
-        id: "preview-user",
-        name: "Lecteur YéYéBook",
-        email: values.email.trim(),
-        role: "user",
-      },
-    })
-  }
-
   const payload = await request<BackendAuthPayload>("/auth/login", {
     method: "POST",
     body: JSON.stringify({
@@ -123,20 +101,6 @@ export async function login(values: LoginFormValues): Promise<AuthApiResponse> {
 export async function register(
   values: RegisterFormValues,
 ): Promise<AuthApiResponse> {
-  if (USE_PREVIEW_AUTH) {
-    return persistPreviewResponse({
-      ok: true,
-      mode: "preview",
-      message: "Compte prêt à être créé en prévisualisation.",
-      user: {
-        id: "preview-user",
-        name: `${values.firstName.trim()} ${values.lastName.trim()}`.trim(),
-        email: values.email.trim(),
-        role: "user",
-      },
-    })
-  }
-
   const payload = await request<BackendAuthPayload>("/auth/register", {
     method: "POST",
     body: JSON.stringify({
@@ -157,10 +121,6 @@ export async function register(
 }
 
 export async function forgotPassword(email: string): Promise<string> {
-  if (USE_PREVIEW_AUTH) {
-    return "La récupération du mot de passe sera disponible avec l’API."
-  }
-
   const payload = await request<{ message?: string }>("/auth/forgot-password", {
     method: "POST",
     body: JSON.stringify({ email: email.trim() }),
@@ -169,10 +129,6 @@ export async function forgotPassword(email: string): Promise<string> {
 }
 
 export async function getCurrentUser(): Promise<AuthUser | null> {
-  if (USE_PREVIEW_AUTH) {
-    return getPreviewSession()
-  }
-
   const payload = await request<BackendAuthPayload>("/auth/me", {
     method: "GET",
   })
@@ -180,10 +136,5 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
 }
 
 export async function logout(): Promise<void> {
-  if (USE_PREVIEW_AUTH) {
-    clearPreviewSession()
-    return
-  }
-
   await request<{ success?: boolean }>("/auth/logout", { method: "POST" })
 }

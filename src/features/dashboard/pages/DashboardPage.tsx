@@ -52,11 +52,12 @@ export function DashboardPage({
     try {
       setData(await getDashboard(user))
     } catch (loadError) {
-      setError(
+      const message =
         loadError instanceof Error
           ? loadError.message
-          : "Impossible de charger votre espace.",
-      )
+          : "Impossible de charger votre espace."
+      setError(message)
+      onToast(message)
     } finally {
       setLoading(false)
     }

@@ -26,7 +26,7 @@ export type AuthUser = {
 
 export type AuthApiResponse = {
   ok: boolean
-  mode: "preview" | "api"
+  mode: "api"
   message: string
   user?: AuthUser
 }

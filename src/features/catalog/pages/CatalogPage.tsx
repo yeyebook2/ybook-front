@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { ChevronLeft, X } from "lucide-react"
 import { Button } from "@figma/astraui"
 
@@ -14,35 +14,38 @@ import {
 } from "../components/CatalogStates"
 import { CatalogToolbar } from "../components/CatalogToolbar"
 import { useCatalog } from "../hooks/useCatalog"
-import type { Book, CatalogBook } from "../types"
+import type { CatalogBook } from "../types"
 
 type CatalogPageProps = {
-  books: Book[]
   initialCategory?: string
   initialSearch?: string
   onHome: () => void
   onSearchChange?: (search: string) => void
   onOpenBook: (book: CatalogBook) => void
   onAddToCart: (book: CatalogBook) => void
+  onError?: (message: string) => void
 }
 
 export function CatalogPage({
-  books,
   initialCategory,
   initialSearch,
   onHome,
   onSearchChange,
   onOpenBook,
   onAddToCart,
+  onError,
 }: CatalogPageProps) {
   const { filters, data, loading, error, updateFilters, resetFilters, reload } =
     useCatalog({
-      previewBooks: books,
       initialCategory,
       initialSearch,
     })
   const [gridView, setGridView] = useState(true)
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
+
+  useEffect(() => {
+    if (error) onError?.(error)
+  }, [error, onError])
 
   const handleFilterChange = (patch: Partial<typeof filters>) => {
     if ("search" in patch && patch.search !== undefined) {

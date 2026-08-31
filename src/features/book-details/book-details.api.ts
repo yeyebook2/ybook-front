@@ -1,4 +1,3 @@
-import { PREVIEW_BOOKS } from "@/features/catalog/catalog.preview"
 import { getPublicApiBaseUrl } from "@/lib/runtime-env"
 import { mapBackendBook } from "@/features/catalog/catalog.api"
 import type {
@@ -17,73 +16,6 @@ import type {
 
 const API_BASE_URL = getPublicApiBaseUrl()
 const API_PREFIX = "/api/v1"
-const USE_PREVIEW_DETAIL = !API_BASE_URL
-
-const PREVIEW_REVIEWS: Record<number, BookReview[]> = {
-  1: [
-    {
-      id: "review-1-1",
-      authorName: "Aminata D.",
-      rating: 5,
-      comment:
-        "Un texte bouleversant, porté par une langue superbe. Je l'ai lu d'une traite.",
-      createdAt: "2026-07-16",
-      verifiedPurchase: true,
-    },
-    {
-      id: "review-1-2",
-      authorName: "Kofi M.",
-      rating: 4,
-      comment:
-        "Une lecture exigeante mais profondément marquante. À recommander.",
-      createdAt: "2026-06-28",
-      verifiedPurchase: true,
-    },
-  ],
-  4: [
-    {
-      id: "review-4-1",
-      authorName: "Fatou N.",
-      rating: 5,
-      comment: "Chaque page respire la mémoire du continent. Magnifique.",
-      createdAt: "2026-07-04",
-      verifiedPurchase: true,
-    },
-    {
-      id: "review-4-2",
-      authorName: "Awa K.",
-      rating: 5,
-      comment: "Une œuvre intime et lumineuse qui reste longtemps en tête.",
-      createdAt: "2026-06-19",
-      verifiedPurchase: true,
-    },
-  ],
-}
-
-function previewReviewPage(book: Book): BookReviewPage {
-  const items = PREVIEW_REVIEWS[book.id] ?? []
-  return {
-    items,
-    total: Math.max(book.reviews, items.length),
-    averageRating: book.rating,
-    page: 1,
-    limit: 5,
-    totalPages: 1,
-  }
-}
-
-function previewDetail(book: Book): BookDetailResponse {
-  const relatedBooks = PREVIEW_BOOKS.filter(
-    (candidate) =>
-      candidate.id !== book.id && candidate.category === book.category,
-  ).slice(0, 4)
-
-  return {
-    book,
-    reviews: previewReviewPage(book),
-    relatedBooks,
-  }
-}
 
 function normalizeReview(
   value: Record<string, unknown>,
@@ -176,13 +108,10 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 export async function getBookDetail(
   slug: string | undefined,
-  fallbackBook?: Book,
+  _fallbackBook?: Book,
 ): Promise<BookDetailResponse> {
-  if (USE_PREVIEW_DETAIL) {
-    const book =
-      PREVIEW_BOOKS.find((candidate) => candidate.slug === slug) ?? fallbackBook
-    if (!book) throw new Error("Livre introuvable.")
-    return previewDetail(book)
+  if (!API_BASE_URL) {
+    throw new Error("L’URL de l’API n’est pas configurée.")
   }
 
   if (!slug) throw new Error("Le slug du livre est requis.")
@@ -209,14 +138,8 @@ export async function getBookRelated(
   slug: string,
   limit = 4,
 ): Promise<CatalogBook[]> {
-  if (USE_PREVIEW_DETAIL) {
-    const book = PREVIEW_BOOKS.find((candidate) => candidate.slug === slug)
-    return book
-      ? PREVIEW_BOOKS.filter(
-          (candidate) =>
-            candidate.id !== book.id && candidate.category === book.category,
-        ).slice(0, limit)
-      : []
+  if (!API_BASE_URL) {
+    throw new Error("L’URL de l’API n’est pas configurée.")
   }
 
   const params = new URLSearchParams({ limit: String(limit) })
@@ -231,11 +154,8 @@ export async function getBookReviews(
   page = 1,
   limit = 5,
 ): Promise<BookReviewPage> {
-  if (USE_PREVIEW_DETAIL) {
-    const book = PREVIEW_BOOKS.find((candidate) => candidate.slug === slug)
-    return book
-      ? previewReviewPage(book)
-      : { items: [], total: 0, averageRating: 0, page, limit, totalPages: 1 }
+  if (!API_BASE_URL) {
+    throw new Error("L’URL de l’API n’est pas configurée.")
   }
 
   const params = new URLSearchParams({
@@ -253,15 +173,8 @@ export async function submitBookReview(
   slug: string,
   values: ReviewFormValues,
 ): Promise<BookReview> {
-  if (USE_PREVIEW_DETAIL) {
-    return {
-      id: `preview-review-${Date.now()}`,
-      authorName: "Vous",
-      rating: values.rating,
-      comment: values.comment.trim(),
-      createdAt: new Date().toISOString(),
-      verifiedPurchase: false,
-    }
+  if (!API_BASE_URL) {
+    throw new Error("L’URL de l’API n’est pas configurée.")
   }
 
   const payload = await request<{ review?: Record<string, unknown> }>(
