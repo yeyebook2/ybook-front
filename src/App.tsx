@@ -610,8 +610,8 @@ export default function App({
     }
     setSessionUser(response.user)
     setToast({ message: response.message, variant: "success" })
-    setView("dashboard")
-    router.push("/dashboard")
+    setView("home")
+    router.push("/")
   }
   const handleLogout = async () => {
     await logout()

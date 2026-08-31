@@ -32,7 +32,7 @@ export function FormField({
         {label}
       </label>
       <div
-        className={`flex min-h-[48px] items-center rounded-corner-md border bg-surface-bg transition-colors focus-within:border-brand-primary focus-within:ring-2 focus-within:ring-brand-primary/15 ${
+        className={`relative flex min-h-[48px] items-center rounded-corner-md border bg-surface-bg transition-colors focus-within:border-brand-primary focus-within:ring-2 focus-within:ring-brand-primary/15 ${
           error ? "border-danger" : "border-border-primary"
         }`}
       >
@@ -40,10 +40,16 @@ export function FormField({
           id={id}
           aria-invalid={Boolean(error)}
           aria-describedby={describedBy}
-          className={`min-w-0 flex-1 bg-transparent px-lg py-md text-label text-text-primary outline-none placeholder:text-text-tertiary ${className}`}
+          className={`min-w-0 flex-1 bg-transparent px-lg py-md text-label text-text-primary outline-none placeholder:text-text-tertiary ${
+            suffix ? "pr-[56px]" : ""
+          } ${className}`}
           {...inputProps}
         />
-        {suffix ? <div className="pr-lg">{suffix}</div> : null}
+        {suffix ? (
+          <div className="absolute right-lg top-1/2 -translate-y-1/2">
+            {suffix}
+          </div>
+        ) : null}
         {children}
       </div>
       {hint ? (
