@@ -52,9 +52,13 @@ export function BookCard({ book, onOpen, onAdd }: BookCardProps) {
           </span>
           <button
             type="button"
-            onClick={onAdd}
+            onClick={(e) => {
+              e.stopPropagation()
+              e.preventDefault()
+              onAdd()
+            }}
             aria-label={`Ajouter « ${book.title} » au panier`}
-            className="inline-flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-corner-full border border-border-primary text-brand-primary transition-all hover:border-brand-primary hover:bg-brand-primary hover:text-on-brand"
+            className="inline-flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-corner-full border border-border-primary text-brand-primary transition-all hover:border-brand-primary hover:bg-brand-primary hover:text-on-brand active:scale-95"
           >
             <Plus className="h-4 w-4" aria-hidden="true" />
           </button>

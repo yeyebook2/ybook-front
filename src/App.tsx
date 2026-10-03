@@ -68,6 +68,7 @@ import { AuthGuard } from "@/features/auth/components/AuthGuard"
 import { RoleGuard } from "@/features/auth/components/RoleGuard"
 import {
   forgotPassword,
+  getCachedUser,
   getCurrentUser,
   logout,
 } from "@/features/auth/auth.api"
@@ -88,7 +89,7 @@ import { getBookDetail } from "@/features/book-details/book-details.api"
 import { formatPrice, handleCoverError } from "@/features/catalog/catalog.utils"
 import { BookCard } from "@/features/catalog/components/BookCard"
 import { RatingStars } from "@/features/catalog/components/RatingStars"
-import type { Book, Chapter } from "@/features/catalog/types"
+import type { Book, CatalogBook, Chapter } from "@/features/catalog/types"
 import {
   ShoppingBag,
   ChevronLeft,
@@ -216,8 +217,12 @@ export default function App({
   const [readerError, setReaderError] = useState<string | null>(null)
   const [purchasedBooks, setPurchasedBooks] = useState<Book[]>([])
 
-  const [sessionUser, setSessionUser] = useState<AuthUser | null>(null)
-  const [sessionChecked, setSessionChecked] = useState(false)
+  const [sessionUser, setSessionUser] = useState<AuthUser | null>(() =>
+    getCachedUser(),
+  )
+  const [sessionChecked, setSessionChecked] = useState(
+    () => typeof window !== "undefined" && Boolean(getCachedUser()),
+  )
   const [books, setBooks] = useState<Book[]>([])
   const [orders, setOrders] = useState<Order[]>([])
   const [selectedBookId, setSelectedBookId] = useState<string | null>(null)
@@ -318,12 +323,15 @@ export default function App({
   const cartTotal = useMemo(
     () =>
       cartItems.reduce((total, item) => {
-        const book = books.find((b) => b.id === item.bookId)
-        return total + (book ? book.price * item.quantity : 0)
+        const book =
+          books.find((b) => b.id === item.bookId) ||
+          purchasedBooks.find((b) => b.id === item.bookId)
+        const price = book?.price ?? item.price ?? 0
+        return total + price
       }, 0),
-    [books, cartItems],
+    [books, purchasedBooks, cartItems],
   )
-  const cartCount = cartItems.reduce((count, item) => count + item.quantity, 0)
+  const cartCount = cartItems.length
 
   useEffect(() => {
     let active = true
@@ -618,69 +626,104 @@ export default function App({
     router.push(`/catalog${query}`)
   }
 
-  const addToCart = (bookId: string, options: { openCart?: boolean } = {}) => {
+  const addToCart = (
+    bookOrId:
+      | string
+      | Book
+      | CatalogBook
+      | {
+          id: string
+          title?: string
+          author?: string
+          price?: number
+          cover?: string
+          slug?: string
+        },
+    options: { openCart?: boolean } = {},
+  ) => {
     const shouldOpenCart = options.openCart ?? true
-    const existing = cartItems.find((item) => item.bookId === bookId)
-    const book = books.find((b) => b.id === bookId)
+    const bookId = typeof bookOrId === "string" ? bookOrId : bookOrId.id
+    const incomingBook = typeof bookOrId === "object" ? bookOrId : undefined
 
-    if (existing && existing.quantity >= MAX_CART_QUANTITY) {
-      setToast({
-        message: "La quantité maximale de ce livre est de 5 exemplaires.",
-        variant: "warning",
+    if (
+      incomingBook &&
+      "title" in incomingBook &&
+      typeof incomingBook.title === "string" &&
+      "category" in incomingBook &&
+      typeof incomingBook.category === "string"
+    ) {
+      const full = incomingBook as Partial<Book> & Partial<CatalogBook>
+      setBooks((prev) => {
+        if (prev.some((b) => b.id === incomingBook.id)) return prev
+        const normalized: Book = {
+          id: incomingBook.id,
+          title: full.title || "Titre",
+          subtitle: full.subtitle,
+          author: full.author || "Auteur",
+          authorSlug: full.authorSlug,
+          price: full.price ?? 0,
+          category: full.category || "Roman",
+          rating: full.rating ?? 5,
+          reviews: full.reviews ?? 1,
+          pages: full.pages ?? 150,
+          year: full.year ?? 2026,
+          isbn: full.isbn,
+          cover: full.cover || "",
+          description: full.description ?? "",
+          tags: full.tags ?? [],
+          chapters: Array.isArray(full.chapters) ? full.chapters : [],
+          slug: full.slug,
+          language: full.language,
+        }
+        return [...prev, normalized]
       })
+    }
+
+    const existing = cartItems.find((item) => item.bookId === bookId)
+    const book =
+      incomingBook ||
+      books.find((b) => b.id === bookId) ||
+      purchasedBooks.find((b) => b.id === bookId)
+
+    if (existing) {
+      showToast(
+        `« ${book?.title ?? "Cet e-book"} » est déjà dans votre panier.`,
+        "warning",
+      )
       if (shouldOpenCart) setCartOpen(true)
       return
     }
 
     setCartItems((prev) => {
-      const current = prev.find((item) => item.bookId === bookId)
-      if (current) {
-        return prev.map((item) =>
-          item.bookId === bookId
-            ? {
-                ...item,
-                quantity: Math.min(MAX_CART_QUANTITY, item.quantity + 1),
-              }
-            : item,
-        )
-      }
-      return [...prev, { bookId, quantity: 1 }]
+      if (prev.some((item) => item.bookId === bookId)) return prev
+      return [
+        ...prev,
+        {
+          bookId,
+          quantity: 1,
+          title: book?.title,
+          author: book?.author,
+          price: book?.price,
+          cover: book?.cover,
+          slug: book?.slug,
+        },
+      ]
     })
-    setToast({
-      message: `« ${book?.title ?? "Livre"} » ajouté au panier`,
-      variant: "success",
-    })
+
+    showToast(`« ${book?.title ?? "Livre"} » ajouté au panier`, "success")
     if (shouldOpenCart) setCartOpen(true)
   }
 
   const addDashboardBookToCart = (book: DashboardBook) => {
-    const localBook = books.find((item) => item.id === book.id)
-    if (!localBook) {
-      setToast({
-        message: "La fiche complète doit être chargée depuis le catalogue.",
-        variant: "warning",
-      })
-      return
-    }
-    addToCart(localBook.id)
+    addToCart({
+      id: book.id,
+      title: book.title,
+      author: book.author,
+      price: book.price ?? 2000,
+      cover: book.cover,
+      slug: book.slug,
+    })
   }
-
-  const updateQty = (bookId: string, delta: number) =>
-    setCartItems((prev) =>
-      prev
-        .map((i) =>
-          i.bookId === bookId
-            ? {
-                ...i,
-                quantity: Math.min(
-                  MAX_CART_QUANTITY,
-                  Math.max(0, i.quantity + delta),
-                ),
-              }
-            : i,
-        )
-        .filter((i) => i.quantity > 0),
-    )
 
   const removeItem = (bookId: string) =>
     setCartItems((prev) => prev.filter((i) => i.bookId !== bookId))
@@ -1545,8 +1588,10 @@ export default function App({
               )}
             </button>
 
-            <div className="hidden items-center gap-sm lg:flex">
-              {sessionUser ? (
+            <div className="hidden items-center gap-sm lg:flex min-w-[100px] justify-end">
+              {!sessionChecked && !sessionUser ? (
+                <div className="h-9 w-24 rounded-corner-full bg-surface-secondary-bg animate-pulse" />
+              ) : sessionUser ? (
                 <button
                   type="button"
                   onClick={() => go("dashboard")}
@@ -1593,7 +1638,9 @@ export default function App({
                 aria-haspopup={sessionUser ? "menu" : undefined}
                 className="relative inline-flex h-9 w-9 shrink-0 items-center justify-center cursor-pointer rounded-corner-full border border-brand-primary/30 bg-surface-hover hover:border-brand-primary hover:shadow-sm transition-all overflow-hidden"
               >
-                {sessionUser ? (
+                {!sessionChecked && !sessionUser ? (
+                  <div className="w-4 h-4 rounded-full bg-border-secondary animate-pulse" />
+                ) : sessionUser ? (
                   <span className="text-label-sm font-bold text-brand-primary uppercase">
                     {sessionUser.name?.[0] || sessionUser.email[0] || "U"}
                   </span>
@@ -1783,6 +1830,8 @@ export default function App({
                   </button>
                 </div>
               </div>
+            ) : !sessionChecked ? (
+              <div className="h-10 w-full rounded-corner-md bg-surface-secondary-bg animate-pulse" />
             ) : (
               <div className="grid grid-cols-2 gap-md pt-xs">
                 <button
@@ -2118,8 +2167,8 @@ export default function App({
             initialSearch={searchQuery}
             onHome={() => go("home")}
             onSearchChange={setSearchQuery}
-            onOpenBook={(book) => openBook(book.id)}
-            onAddToCart={(book) => addToCart(book.id)}
+            onOpenBook={(book) => openBook(book)}
+            onAddToCart={(book) => addToCart(book)}
             onError={(message) => setToast({ message, variant: "error" })}
           />
         )}
@@ -2140,9 +2189,9 @@ export default function App({
             onBack={() => openCatalog(selectedBook?.category)}
             onOpenBook={(book) => openBook(book)}
             onOpenAuthor={() => showComingSoon("Auteur")}
-            onAddToCart={(book) => addToCart(book.id)}
+            onAddToCart={(book) => addToCart(book)}
             onBuyNow={(book) => {
-              addToCart(book.id, { openCart: false })
+              addToCart(book, { openCart: false })
               setCartOpen(false)
               go("checkout")
             }}
@@ -2625,14 +2674,22 @@ export default function App({
               <>
                 <div className="flex-1 overflow-y-auto px-xl py-lg flex flex-col gap-lg">
                   {cartItems.map((item) => {
-                    const book = books.find((b) => b.id === item.bookId)
-                    if (!book) return null
+                    const book =
+                      books.find((b) => b.id === item.bookId) ||
+                      purchasedBooks.find((b) => b.id === item.bookId) || {
+                        id: item.bookId,
+                        title: item.title || "E-book",
+                        author: item.author || "Auteur",
+                        price: item.price ?? 0,
+                        cover: item.cover || "",
+                        slug: item.slug || "",
+                      }
                     return (
                       <div key={item.bookId} className="flex gap-lg">
                         <button
                           onClick={() => {
                             setCartOpen(false)
-                            openBook(book.id)
+                            openBook(book)
                           }}
                           className="w-[64px] shrink-0 aspect-[2/3] rounded-corner-sm overflow-hidden bg-brand-tertiary border border-border-secondary cursor-pointer"
                           aria-label={`Voir « ${book.title} »`}
@@ -2654,41 +2711,16 @@ export default function App({
                             </p>
                           </div>
                           <div className="flex items-center justify-between">
-                            <div className="inline-flex items-center gap-sm bg-surface-secondary-bg border border-border-secondary rounded-corner-full p-xs">
-                              <button
-                                onClick={() => updateQty(book.id, -1)}
-                                className="w-6 h-6 inline-flex items-center justify-center rounded-corner-full text-text-secondary hover:bg-surface-hover cursor-pointer"
-                                aria-label={`Diminuer la quantité de « ${book.title} »`}
-                              >
-                                <Minus
-                                  className="w-3.5 h-3.5"
-                                  aria-hidden="true"
-                                />
-                              </button>
-                              <span
-                                className="text-label-sm font-semibold w-4 text-center"
-                                aria-live="polite"
-                              >
-                                {item.quantity}
-                              </span>
-                              <button
-                                onClick={() => updateQty(book.id, 1)}
-                                className="w-6 h-6 inline-flex items-center justify-center rounded-corner-full text-text-secondary hover:bg-surface-hover cursor-pointer"
-                                aria-label={`Augmenter la quantité de « ${book.title} »`}
-                              >
-                                <Plus
-                                  className="w-3.5 h-3.5"
-                                  aria-hidden="true"
-                                />
-                              </button>
-                            </div>
+                            <span className="text-[12px] font-medium text-text-tertiary bg-surface-secondary-bg px-sm py-0.5 rounded-corner-full border border-border-secondary">
+                              Format numérique · 1 licence
+                            </span>
                             <span className="text-label-sm font-semibold text-text-primary">
-                              {formatPrice(book.price * item.quantity)}
+                              {formatPrice(book.price)}
                             </span>
                           </div>
                         </div>
                         <button
-                          onClick={() => removeItem(book.id)}
+                          onClick={() => removeItem(item.bookId)}
                           aria-label={`Retirer « ${book.title} » du panier`}
                           className="self-start text-text-tertiary hover:text-danger transition-colors cursor-pointer"
                         >
@@ -3177,21 +3209,22 @@ function CheckoutView({
           </h2>
           <div className="flex flex-col gap-md">
             {cartItems.map((item) => {
-              const book = books.find((b) => b.id === item.bookId)
-              if (!book) return null
+              const book =
+                books.find((b) => b.id === item.bookId) || {
+                  id: item.bookId,
+                  title: item.title || "E-book numérique",
+                  price: item.price ?? 0,
+                }
               return (
                 <div
                   key={item.bookId}
                   className="flex items-center justify-between gap-md"
                 >
                   <span className="text-label-sm text-text-secondary line-clamp-1">
-                    {book.title}{" "}
-                    <span className="text-text-tertiary">
-                      × {item.quantity}
-                    </span>
+                    {book.title}
                   </span>
                   <span className="text-label-sm text-text-primary font-medium whitespace-nowrap">
-                    {formatPrice(book.price * item.quantity)}
+                    {formatPrice(book.price)}
                   </span>
                 </div>
               )

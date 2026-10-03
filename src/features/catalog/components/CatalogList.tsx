@@ -53,7 +53,10 @@ export function CatalogList({ books, onOpen, onAdd }: CatalogListProps) {
               <Button
                 variant="primary"
                 iconStart={<Plus className="h-4 w-4" aria-hidden="true" />}
-                onClick={() => onAdd(book)}
+                onClick={(e) => {
+                  e?.stopPropagation?.()
+                  onAdd(book)
+                }}
               >
                 Ajouter
               </Button>

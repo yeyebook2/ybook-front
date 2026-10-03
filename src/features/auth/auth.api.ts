@@ -94,6 +94,31 @@ function adaptAuthResponse(
   }
 }
 
+export const AUTH_USER_STORAGE_KEY = "yeyebook-auth-user"
+
+export function getCachedUser(): AuthUser | null {
+  if (typeof window === "undefined") return null
+  try {
+    const raw = localStorage.getItem(AUTH_USER_STORAGE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as AuthUser
+    return parsed && typeof parsed === "object" && parsed.email ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+export function saveCachedUser(user: AuthUser | null): void {
+  if (typeof window === "undefined") return
+  try {
+    if (user) {
+      localStorage.setItem(AUTH_USER_STORAGE_KEY, JSON.stringify(user))
+    } else {
+      localStorage.removeItem(AUTH_USER_STORAGE_KEY)
+    }
+  } catch {}
+}
+
 export async function login(values: LoginFormValues): Promise<AuthApiResponse> {
   const payload = await request<BackendAuthPayload>("/auth/login", {
     method: "POST",
@@ -103,7 +128,11 @@ export async function login(values: LoginFormValues): Promise<AuthApiResponse> {
     }),
   })
 
-  return adaptAuthResponse(payload, "Connexion réussie.")
+  const res = adaptAuthResponse(payload, "Connexion réussie.")
+  if (res.user) {
+    saveCachedUser(res.user)
+  }
+  return res
 }
 
 export async function register(
@@ -131,7 +160,11 @@ export async function register(
     } catch {}
   }
 
-  return adaptAuthResponse(payload, "Compte créé avec succès.")
+  const res = adaptAuthResponse(payload, "Compte créé avec succès.")
+  if (res.user) {
+    saveCachedUser(res.user)
+  }
+  return res
 }
 
 export async function forgotPassword(email: string): Promise<string> {
@@ -147,12 +180,18 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
     const payload = await request<BackendAuthPayload>("/auth/me", {
       method: "GET",
     })
-    return normalizeUser(payload.user) ?? null
+    const user = normalizeUser(payload.user) ?? null
+    saveCachedUser(user)
+    return user
   } catch {
+    saveCachedUser(null)
     return null
   }
 }
 
 export async function logout(): Promise<void> {
-  await request<{ success?: boolean }>("/auth/logout", { method: "POST" })
+  saveCachedUser(null)
+  try {
+    await request<{ success?: boolean }>("/auth/logout", { method: "POST" })
+  } catch {}
 }
