@@ -73,6 +73,10 @@ import {
   logout,
 } from "@/features/auth/auth.api"
 import type { AuthApiResponse, AuthUser } from "@/features/auth/types"
+import {
+  consumePendingToast,
+  setPendingToast,
+} from "@/lib/pending-toast"
 import { DashboardPage } from "@/features/dashboard/pages/DashboardPage"
 import { getLibraryBookIds, getLibraryItems } from "@/features/dashboard/dashboard.api"
 import type { DashboardBook } from "@/features/dashboard/types"
@@ -184,12 +188,15 @@ const PROVIDER_LABELS: Record<string, string> = {
   wave: "Wave",
   moov: "Moov Money",
 }
-const PROGRESS_KEY = "ybook-reading-progress"
+function getProgressKey(userId?: string | null): string {
+  return userId ? `yeyebook-reading-progress-${userId}` : "yeyebook-reading-progress-guest"
+}
 
-function loadProgress(): Progress {
+function loadProgress(userId?: string | null): Progress {
+  if (typeof window === "undefined") return {}
   try {
-    const raw = localStorage.getItem(PROGRESS_KEY)
-    return raw ? JSON.parse(raw) as Progress : {}
+    const raw = localStorage.getItem(getProgressKey(userId))
+    return raw ? (JSON.parse(raw) as Progress) : {}
   } catch {
     return {}
   }
@@ -558,9 +565,13 @@ export default function App({
   useEffect(() => {
     setCartItems(loadCart())
     setCartHydrated(true)
-    setProgress(loadProgress())
+    setProgress(loadProgress(sessionUser?.id))
     setProgressHydrated(true)
-  }, [])
+    const pending = consumePendingToast()
+    if (pending) {
+      showToast(pending.message, pending.variant)
+    }
+  }, [showToast])
   useEffect(() => {
     if (!cartHydrated) return
     saveCart(cartItems)
@@ -568,9 +579,15 @@ export default function App({
   useEffect(() => {
     if (!progressHydrated) return
     try {
-      localStorage.setItem(PROGRESS_KEY, JSON.stringify(progress))
+      localStorage.setItem(
+        getProgressKey(sessionUser?.id),
+        JSON.stringify(progress),
+      )
     } catch {}
-  }, [progressHydrated, progress])
+  }, [progressHydrated, progress, sessionUser?.id])
+  useEffect(() => {
+    setProgress(loadProgress(sessionUser?.id))
+  }, [sessionUser?.id])
   useEffect(() => {
     document.title = "YéYéBook — Le nouveau souffle de la littérature africaine"
     let link = document.querySelector<HTMLLinkElement>("link[rel='icon']")
@@ -905,29 +922,40 @@ export default function App({
     { label: "Ma bibliothèque", view: "library" },
   ]
 
-  const showAuthError = (message: string) =>
-    setToast({ message, variant: "error" })
+  const showAuthError = (message: string) => {
+    const clean =
+      typeof message === "string" && message.trim().length > 0
+        ? message.trim()
+        : "Une erreur est survenue lors de l’authentification."
+    showToast(clean, "error")
+  }
   const showComingSoon = (label: string) =>
-    setToast({
-      message: `La page « ${label} » sera disponible dans une prochaine version.`,
-      variant: "default",
-    })
+    showToast(
+      `La page « ${label} » sera disponible dans une prochaine version.`,
+      "default",
+    )
   const handleAuthenticated = (response: AuthApiResponse) => {
     if (!response.user) {
       showAuthError("La session n’a pas pu être initialisée.")
       return
     }
     setSessionUser(response.user)
-    setToast({ message: response.message, variant: "success" })
+    setProgress(loadProgress(response.user.id))
+    const msg =
+      typeof response.message === "string" && response.message.trim().length > 0
+        ? response.message.trim()
+        : "Connexion réussie."
+    setPendingToast({ message: msg, variant: "success" })
     setView("home")
     router.push("/")
   }
   const handleLogout = async () => {
     await logout()
     setSessionUser(null)
+    setProgress({})
+    setPendingToast({ message: "Vous êtes déconnecté·e.", variant: "default" })
     setView("home")
     router.push("/")
-    setToast({ message: "Vous êtes déconnecté·e.", variant: "default" })
   }
   const redirectToLogin = useCallback(() => go("login"), [go])
   const redirectUnauthorized = useCallback(() => {
@@ -964,7 +992,12 @@ export default function App({
               return
             }
             void forgotPassword(email)
-              .then((message) => setToast({ message, variant: "default" }))
+              .then((message) =>
+                showToast(
+                  message?.trim() || "Si ce compte existe, un e-mail a été envoyé.",
+                  "default",
+                ),
+              )
               .catch((error) =>
                 showAuthError(
                   error instanceof Error
@@ -2316,7 +2349,10 @@ export default function App({
                     value: `${
                       libraryBooks.filter((b) => {
                         const s = progress[b.id]
-                        return s !== undefined && s >= b.chapters.length - 1
+                        if (s === undefined) return false
+                        const total = b.chapters?.length || 1
+                        if (total <= 1) return s > 0
+                        return s >= total - 1
                       }).length
                     }`,
                   },

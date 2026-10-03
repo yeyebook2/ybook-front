@@ -77,6 +77,8 @@ export function CatalogPage({
 
   return (
     <div className="min-h-screen animate-fade">
+      {/* Grand bandeau hero masqué temporairement à la demande de l'utilisateur */}
+      {/*
       <section className="border-b border-border-secondary bg-[#b84870] text-on-brand">
         <div className="mx-auto flex max-w-[1320px] flex-col gap-lg px-xl py-3xl md:px-2xl md:py-4xl">
           <p className="text-video-title font-semibold uppercase tracking-[0.22em] text-brand-tertiary">
@@ -102,6 +104,7 @@ export function CatalogPage({
           </div>
         </div>
       </section>
+      */}
 
       <div className="mx-auto flex max-w-[1320px] flex-col gap-2xl px-xl py-3xl md:px-2xl">
         <nav

@@ -35,7 +35,7 @@ export function SearchInput({
         }}
         placeholder={placeholder}
         autoFocus={autoFocus}
-        className="flex-1 min-w-0 w-full h-10 pl-10 pr-9 rounded-corner-full bg-surface-secondary-bg border border-border-secondary text-label-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20 transition-all"
+        className="flex-1 min-w-0 w-full h-10 pl-10 pr-10 rounded-corner-full bg-surface-secondary-bg border border-border-secondary text-label-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20 transition-all [&::-webkit-search-cancel-button]:hidden [&::-webkit-search-decoration]:hidden"
       />
       {value.length > 0 && (
         <button
@@ -45,7 +45,7 @@ export function SearchInput({
             onSearch?.()
           }}
           aria-label="Effacer la recherche"
-          className="absolute right-3 p-1 text-text-tertiary hover:text-text-primary rounded-full cursor-pointer transition-colors"
+          className="absolute right-2.5 top-1/2 -translate-y-1/2 inline-flex items-center justify-center p-1 text-text-tertiary hover:text-text-primary rounded-full cursor-pointer transition-colors"
         >
           <X className="w-3.5 h-3.5" aria-hidden="true" />
         </button>

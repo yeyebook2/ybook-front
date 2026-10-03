@@ -1,5 +1,4 @@
 import { ArrowRight, Plus } from "lucide-react"
-import { Badge } from "@figma/astraui"
 
 import type { CatalogBook } from "../types"
 import { formatPrice, handleCoverError } from "../catalog.utils"
@@ -25,9 +24,10 @@ export function BookCard({ book, onOpen, onAdd }: BookCardProps) {
           onError={handleCoverError}
           className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.04]"
         />
-        <div className="absolute inset-0 bg-[#100908]/45 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
-        <div className="absolute left-md top-md">
-          <Badge variant="secondary" label={book.category} />
+        <div className="absolute left-md top-md z-10">
+          <span className="inline-flex items-center px-2.5 py-1 rounded-corner-full text-[12px] font-semibold tracking-wide bg-[#100908]/85 text-[#FFF6EB] backdrop-blur-md shadow-md border border-white/20">
+            {book.category}
+          </span>
         </div>
         <div className="absolute inset-x-md bottom-md translate-y-2 opacity-0 transition-all duration-300 group-hover:translate-y-0 group-hover:opacity-100">
           <span className="inline-flex items-center gap-xs rounded-corner-full bg-[#100908]/70 px-md py-xs text-video-title font-semibold text-white backdrop-blur-sm">

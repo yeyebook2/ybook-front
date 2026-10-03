@@ -29,7 +29,7 @@ export function CatalogToolbar({
   return (
     <div className="flex flex-col gap-lg rounded-corner-lg border border-border-secondary bg-surface-bg p-lg">
       <div className="flex flex-col gap-lg lg:flex-row lg:items-center lg:justify-between">
-        <div className="w-full lg:max-w-lg">
+        <div className="w-full transition-all duration-300 ease-out sm:w-[320px] lg:w-[380px] focus-within:sm:w-[480px] focus-within:lg:w-[580px]">
           <SearchInput
             placeholder="Rechercher un titre ou un auteur…"
             value={filters.search}

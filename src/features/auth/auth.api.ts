@@ -86,10 +86,15 @@ function adaptAuthResponse(
   payload: BackendAuthPayload,
   fallbackMessage: string,
 ): AuthApiResponse {
+  const message =
+    typeof payload.message === "string" && payload.message.trim().length > 0
+      ? payload.message.trim()
+      : fallbackMessage
+
   return {
     ok: payload.success !== false,
     mode: "api",
-    message: payload.message ?? fallbackMessage,
+    message,
     user: normalizeUser(payload.user),
   }
 }
