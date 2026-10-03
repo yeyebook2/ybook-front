@@ -1,7 +1,7 @@
 import type { AuthUser } from "@/features/auth/types"
 
 export type DashboardBook = {
-  id: number
+  id: string
   title: string
   author: string
   category: string

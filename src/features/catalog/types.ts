@@ -4,7 +4,7 @@ export type Chapter = {
 }
 
 export type Book = {
-  id: number
+  id: string
   title: string
   subtitle?: string
   author: string
@@ -28,7 +28,7 @@ export type Book = {
 }
 
 export type CatalogBook = {
-  id: number
+  id: string
   slug?: string
   title: string
   subtitle?: string

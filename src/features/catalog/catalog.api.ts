@@ -37,7 +37,7 @@ function resolveCategory(book: BackendBook): string {
 
 export function mapBackendBook(book: BackendBook): CatalogBook {
   return {
-    id: asNumber(book.id, 0),
+    id: String(book.id ?? ""),
     slug: book.slug,
     title: book.title,
     subtitle: book.subtitle,

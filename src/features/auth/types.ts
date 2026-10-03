@@ -21,6 +21,7 @@ export type AuthUser = {
   id: string
   name: string
   email: string
+  phone?: string
   role?: "user" | "author" | "moderator" | "admin" | "super_admin"
 }
 

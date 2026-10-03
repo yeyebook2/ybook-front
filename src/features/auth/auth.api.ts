@@ -16,6 +16,7 @@ type BackendAuthPayload = {
     first_name?: string
     last_name?: string
     email?: string
+    phone?: string
     role?: "user" | "author" | "moderator" | "admin" | "super_admin"
   }
   message?: string
@@ -70,6 +71,7 @@ function normalizeUser(
       [user.first_name, user.last_name].filter(Boolean).join(" ") ||
       user.email,
     email: user.email,
+    phone: user.phone,
     role: user.role,
   }
 }
@@ -129,10 +131,14 @@ export async function forgotPassword(email: string): Promise<string> {
 }
 
 export async function getCurrentUser(): Promise<AuthUser | null> {
-  const payload = await request<BackendAuthPayload>("/auth/me", {
-    method: "GET",
-  })
-  return normalizeUser(payload.user) ?? null
+  try {
+    const payload = await request<BackendAuthPayload>("/auth/me", {
+      method: "GET",
+    })
+    return normalizeUser(payload.user) ?? null
+  } catch {
+    return null
+  }
 }
 
 export async function logout(): Promise<void> {

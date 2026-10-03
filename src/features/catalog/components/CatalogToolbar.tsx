@@ -1,6 +1,6 @@
-import { LayoutGrid, List, Search, SlidersHorizontal } from "lucide-react"
+import { LayoutGrid, List, SlidersHorizontal } from "lucide-react"
 
-import { SearchComponent } from "@figma/astraui"
+import { SearchInput } from "@/components/ui/SearchInput"
 
 import { CATALOG_SORTS } from "../catalog.constants"
 import type { CatalogFilters } from "../types"
@@ -30,7 +30,7 @@ export function CatalogToolbar({
     <div className="flex flex-col gap-lg rounded-corner-lg border border-border-secondary bg-surface-bg p-lg">
       <div className="flex flex-col gap-lg lg:flex-row lg:items-center lg:justify-between">
         <div className="w-full lg:max-w-lg">
-          <SearchComponent
+          <SearchInput
             placeholder="Rechercher un titre ou un auteur…"
             value={filters.search}
             onChange={(search) => onChange({ search, page: 1 })}

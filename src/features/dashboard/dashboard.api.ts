@@ -77,7 +77,7 @@ function mapBook(book: BackendBook | BackendLibraryItem): DashboardBook {
         : undefined
 
   return {
-    id: Number(id),
+    id: String(id),
     title:
       nestedBook?.title ??
       ("title" in book ? book.title : undefined) ??

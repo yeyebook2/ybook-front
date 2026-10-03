@@ -22,7 +22,7 @@ type DashboardPageProps = {
   onCatalog: () => void
   onLibrary: () => void
   onLogout: () => void
-  onOpenBook: (bookId: number) => void
+  onOpenBook: (bookId: string) => void
   onAddToCart: (book: DashboardBook) => void
   onToast: (message: string) => void
 }

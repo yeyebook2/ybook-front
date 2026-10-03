@@ -7,7 +7,8 @@ function isCartItem(value: unknown): value is CartItem {
   if (!value || typeof value !== "object") return false
   const item = value as Partial<CartItem>
   return (
-    Number.isInteger(item.bookId) &&
+    typeof item.bookId === "string" &&
+    item.bookId.trim().length > 0 &&
     typeof item.quantity === "number" &&
     Number.isInteger(item.quantity) &&
     item.quantity >= 1 &&

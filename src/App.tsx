@@ -52,12 +52,13 @@ import {
 } from "react"
 import {
   Avatar,
-  SearchComponent,
   Button,
   Badge,
-  Toast,
   InputField,
 } from "@figma/astraui"
+import { SearchInput } from "@/components/ui/SearchInput"
+import { Toast, type ToastVariant } from "@/components/ui/Toast"
+import { createOrderApi, initiatePaymentApi } from "@/features/checkout/checkout.api"
 const ybookSymbol = "/brand/ybook-symbol-primary.png"
 const faviconPng = "/brand/ybook-favicon-180.png"
 import { Wordmark } from "@/components/brand/Wordmark"
@@ -120,14 +121,17 @@ import {
   Landmark,
   Feather,
   Sparkles,
+  Menu,
+  User,
+  Loader2,
 } from "lucide-react"
 
 export type View = "home" | "catalog" | "details" | "checkout" | "confirmation" | "library" | "reader" | "admin" | "login" | "register" | "dashboard"
 type ToastState = {
   message: string
-  variant: "default" | "success" | "error" | "warning"
+  variant?: ToastVariant
 } | null
-type Progress = Record<number, number>
+type Progress = Record<string, number>
 type OrderStatus = "paid" | "pending" | "refunded"
 type Order = {
   id: string
@@ -201,14 +205,16 @@ export default function App({
   const [sessionChecked, setSessionChecked] = useState(false)
   const [books, setBooks] = useState<Book[]>([])
   const [orders, setOrders] = useState<Order[]>([])
-  const [selectedBookId, setSelectedBookId] = useState<number | null>(null)
+  const [selectedBookId, setSelectedBookId] = useState<string | null>(null)
   const [cartItems, setCartItems] = useState<CartItem[]>([])
   const [cartHydrated, setCartHydrated] = useState(false)
-  const [library, setLibrary] = useState<number[]>([])
+  const [library, setLibrary] = useState<string[]>([])
   const [searchQuery, setSearchQuery] = useState("")
   const [activeCategory, setActiveCategory] = useState("Tous")
   const [cartOpen, setCartOpen] = useState(false)
   const [toast, setToast] = useState<ToastState>(null)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [checkoutLoading, setCheckoutLoading] = useState(false)
 
   const [libGrid, setLibGrid] = useState(true)
   const [readerTheme, setReaderTheme] = useState<"light" | "sepia" | "dark">(
@@ -217,8 +223,8 @@ export default function App({
   const [readerFont, setReaderFont] = useState(21)
   const [readerLeading, setReaderLeading] = useState(1.75)
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [bookmarks, setBookmarks] = useState<Record<number, number[]>>({})
-  const [readerBookId, setReaderBookId] = useState<number | null>(null)
+  const [bookmarks, setBookmarks] = useState<Record<string, number[]>>({})
+  const [readerBookId, setReaderBookId] = useState<string | null>(null)
   const [currentChapter, setCurrentChapter] = useState(0)
   const [chapterListOpen, setChapterListOpen] = useState(false)
   const [progress, setProgress] = useState<Progress>({})
@@ -282,16 +288,9 @@ export default function App({
         if (!active) return
         setSessionUser(user)
       })
-      .catch((reason: unknown) => {
+      .catch(() => {
         if (!active) return
         setSessionUser(null)
-        setToast({
-          message:
-            reason instanceof Error
-              ? reason.message
-              : "Impossible de vérifier votre session.",
-          variant: "error",
-        })
       })
       .finally(() => {
         if (active) setSessionChecked(true)
@@ -358,7 +357,7 @@ export default function App({
     [router],
   )
 
-  const openBook = (id: number) => {
+  const openBook = (id: string) => {
     const book = books.find((candidate) => candidate.id === id)
     if (!book?.slug) {
       setToast({
@@ -381,7 +380,7 @@ export default function App({
     router.push(`/catalog${query}`)
   }
 
-  const addToCart = (bookId: number, options: { openCart?: boolean } = {}) => {
+  const addToCart = (bookId: string, options: { openCart?: boolean } = {}) => {
     const shouldOpenCart = options.openCart ?? true
     const existing = cartItems.find((item) => item.bookId === bookId)
     const book = books.find((b) => b.id === bookId)
@@ -428,7 +427,7 @@ export default function App({
     addToCart(localBook.id)
   }
 
-  const updateQty = (bookId: number, delta: number) =>
+  const updateQty = (bookId: string, delta: number) =>
     setCartItems((prev) =>
       prev
         .map((i) =>
@@ -445,32 +444,67 @@ export default function App({
         .filter((i) => i.quantity > 0),
     )
 
-  const removeItem = (bookId: number) =>
+  const removeItem = (bookId: string) =>
     setCartItems((prev) => prev.filter((i) => i.bookId !== bookId))
 
-  const placeOrder = (details: CheckoutDetails) => {
-    const order: Order = {
-      id: `YB-${2419 + orders.length}`,
-      customer: details.name.trim() || "Client",
-      email: details.email.trim(),
-      phone: details.phone.trim(),
-      provider: details.provider,
-      items: cartItems,
-      total: cartTotal,
-      date: new Date().toISOString().slice(0, 10),
-      status: "paid",
+  const placeOrder = async (details: CheckoutDetails) => {
+    if (cartItems.length === 0) {
+      setToast({
+        message: "Votre panier est vide.",
+        variant: "warning",
+      })
+      return
     }
-    setOrders((prev) => [order, ...prev])
-    setLibrary((prev) =>
-      Array.from(new Set([...prev, ...cartItems.map((i) => i.bookId)])),
-    )
-    setCartItems([])
-    setView("confirmation")
-    setToast({
-      message: "Paiement confirmé — bonne lecture !",
-      variant: "success",
-    })
+
+    if (!sessionUser) {
+      setToast({
+        message: "Veuillez vous connecter pour procéder au paiement et retrouver vos livres dans votre bibliothèque.",
+        variant: "warning",
+      })
+      go("login")
+      return
+    }
+
+    setCheckoutLoading(true)
+    try {
+      const bookIds = cartItems.map((item) => item.bookId)
+      const orderRes = await createOrderApi(bookIds)
+      const paymentRes = await initiatePaymentApi(
+        orderRes.order.id,
+        details.phone,
+      )
+
+      if (paymentRes.payment?.payment_url) {
+        setToast({
+          message: "Redirection vers la passerelle sécurisée FedaPay...",
+          variant: "success",
+        })
+        window.location.href = paymentRes.payment.payment_url
+        return
+      }
+
+      setLibrary((prev) =>
+        Array.from(new Set([...prev, ...cartItems.map((i) => i.bookId)])),
+      )
+      setCartItems([])
+      setView("confirmation")
+      setToast({
+        message: "Paiement confirmé — bonne lecture !",
+        variant: "success",
+      })
+    } catch (err) {
+      setToast({
+        message:
+          err instanceof Error
+            ? err.message
+            : "Erreur lors de l'initialisation du paiement FedaPay.",
+        variant: "error",
+      })
+    } finally {
+      setCheckoutLoading(false)
+    }
   }
+
   const saveBook = (book: Book) => {
     setBooks((prev) => {
       const exists = prev.some((b) => b.id === book.id)
@@ -480,7 +514,7 @@ export default function App({
     setToast({ message: `« ${book.title} » enregistré`, variant: "success" })
   }
 
-  const deleteBook = (id: number) => {
+  const deleteBook = (id: string) => {
     const book = books.find((b) => b.id === id)
     setBooks((prev) => prev.filter((b) => b.id !== id))
     setCartItems((prev) => prev.filter((item) => item.bookId !== id))
@@ -490,7 +524,7 @@ export default function App({
     })
   }
 
-  const togglePublish = (id: number) => {
+  const togglePublish = (id: string) => {
     setBooks((prev) =>
       prev.map((b) =>
         b.id === id
@@ -506,7 +540,7 @@ export default function App({
   const setOrderStatus = (id: string, status: OrderStatus) => {
     setOrders((prev) => prev.map((o) => (o.id === id ? { ...o, status } : o)))
   }
-  const startReading = (bookId: number) => {
+  const startReading = (bookId: string) => {
     const book = books.find((b) => b.id === bookId)
     if (!book) return
     const saved = progress[bookId]
@@ -517,7 +551,7 @@ export default function App({
     openReaderAt(bookId, saved ?? 0)
   }
 
-  const openReaderAt = (bookId: number, chapter: number) => {
+  const openReaderAt = (bookId: string, chapter: number) => {
     setReaderBookId(bookId)
     setCurrentChapter(chapter)
     setChapterListOpen(false)
@@ -694,17 +728,11 @@ export default function App({
             onExit={() => go("home")}
           />
           {toast && (
-            <div
-              className="fixed bottom-xl left-1/2 -translate-x-1/2 z-[80] animate-rise"
-              role="status"
-              aria-live="polite"
-            >
-              <Toast
-                message={toast.message}
-                variant={toast.variant}
-                onDismiss={() => setToast(null)}
-              />
-            </div>
+            <Toast
+              message={toast.message}
+              variant={toast.variant}
+              onDismiss={() => setToast(null)}
+            />
           )}
         </>
       </RoleGuard>
@@ -1049,13 +1077,11 @@ export default function App({
         )}
 
         {toast && (
-          <div className="fixed bottom-xl left-1/2 -translate-x-1/2 z-[60] animate-rise">
-            <Toast
-              message={toast.message}
-              variant={toast.variant}
-              onDismiss={() => setToast(null)}
-            />
-          </div>
+          <Toast
+            message={toast.message}
+            variant={toast.variant}
+            onDismiss={() => setToast(null)}
+          />
         )}
       </div>
     )
@@ -1071,51 +1097,56 @@ export default function App({
       </a>
 
       {}
-      <header className="sticky top-0 z-40 bg-surface-bg/85 backdrop-blur-xl border-b border-border-secondary">
-        <div className="max-w-[1320px] mx-auto px-xl md:px-2xl h-[72px] flex items-center gap-2xl">
-          <button
-            onClick={() => go("home")}
-            className="flex items-center gap-md cursor-pointer hover:opacity-80 transition-opacity shrink-0"
-            aria-label="YéYéBook — accueil"
-          >
-            <Wordmark className="h-8 w-auto" />
-          </button>
+      <header className="sticky top-0 z-40 bg-surface-bg/95 backdrop-blur-xl border-b border-border-secondary">
+        <div className="max-w-[1320px] mx-auto px-xl md:px-2xl h-[72px] flex items-center justify-between gap-md lg:gap-2xl">
+          <div className="flex items-center gap-xl">
+            <button
+              onClick={() => {
+                setMobileMenuOpen(false)
+                go("home")
+              }}
+              className="flex items-center gap-md cursor-pointer hover:opacity-80 transition-opacity shrink-0"
+              aria-label="YéYéBook — accueil"
+            >
+              <Wordmark className="h-8 w-auto" />
+            </button>
 
-          <nav
-            className="hidden lg:flex items-center gap-xs"
-            aria-label="Navigation principale"
-          >
-            {navLinks.map((link) => {
-              const active = view === link.view
-              return (
-                <button
-                  key={link.label}
-                  onClick={() =>
-                    link.view === "catalog" ? openCatalog() : go(link.view)
-                  }
-                  aria-current={active ? "page" : undefined}
-                  className={`px-lg py-sm rounded-corner-full text-label-sm font-medium transition-colors cursor-pointer ${
-                    active
-                      ? "text-on-brand bg-brand-primary"
-                      : "text-text-secondary hover:text-text-primary hover:bg-surface-hover"
-                  }`}
-                >
-                  {link.label}
-                </button>
-              )
-            })}
-          </nav>
+            <nav
+              className="hidden lg:flex items-center gap-xs"
+              aria-label="Navigation principale"
+            >
+              {navLinks.map((link) => {
+                const active = view === link.view
+                return (
+                  <button
+                    key={link.label}
+                    onClick={() =>
+                      link.view === "catalog" ? openCatalog() : go(link.view)
+                    }
+                    aria-current={active ? "page" : undefined}
+                    className={`px-lg py-sm rounded-corner-full text-label-sm font-medium transition-colors cursor-pointer ${
+                      active
+                        ? "text-on-brand bg-brand-primary"
+                        : "text-text-secondary hover:text-text-primary hover:bg-surface-hover"
+                    }`}
+                  >
+                    {link.label}
+                  </button>
+                )
+              })}
+            </nav>
+          </div>
 
           <div className="flex-1 max-w-[420px] hidden md:block">
-            <SearchComponent
+            <SearchInput
               placeholder="Rechercher un titre, un auteur…"
               value={searchQuery}
-              onChange={(val) => setSearchQuery(val)}
+              onChange={setSearchQuery}
               onSearch={() => openCatalog()}
             />
           </div>
 
-          <div className="flex items-center gap-lg ml-auto md:ml-0">
+          <div className="flex items-center gap-sm sm:gap-md">
             <button
               onClick={() => setCartOpen(true)}
               aria-label={`Ouvrir le panier${
@@ -1136,6 +1167,7 @@ export default function App({
                 </span>
               )}
             </button>
+
             <div className="hidden items-center gap-sm lg:flex">
               {sessionUser ? (
                 <button
@@ -1164,24 +1196,151 @@ export default function App({
                 </>
               )}
             </div>
+
             <div className="w-px h-6 bg-border-secondary hidden sm:block" />
+
+            {/* Avatar / Mon Espace button */}
             <button
               type="button"
               onClick={() => go(sessionUser ? "dashboard" : "login")}
-              aria-label={
-                sessionUser ? "Ouvrir mon espace" : "Ouvrir l’espace lecteur"
-              }
-              className="inline-flex h-8 w-8 shrink-0 items-center justify-center cursor-pointer rounded-corner-full overflow-hidden"
+              title={sessionUser ? `Mon espace (${sessionUser.name || sessionUser.email})` : "Se connecter"}
+              aria-label={sessionUser ? "Ouvrir mon espace" : "Se connecter"}
+              className="relative inline-flex h-9 w-9 shrink-0 items-center justify-center cursor-pointer rounded-corner-full border border-brand-primary/30 bg-surface-hover hover:border-brand-primary hover:shadow-sm transition-all overflow-hidden"
             >
-              <Avatar
-                type="image"
-                src="/brand/ybook-symbol-primary.png"
-                size="medium"
-                shape="circle"
-              />
+              {sessionUser ? (
+                <span className="text-label-sm font-bold text-brand-primary uppercase">
+                  {sessionUser.name?.[0] || sessionUser.email[0] || "U"}
+                </span>
+              ) : (
+                <User className="w-4 h-4 text-text-secondary" aria-hidden="true" />
+              )}
+              {sessionUser && (
+                <span
+                  className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-surface-bg"
+                  aria-hidden="true"
+                />
+              )}
+            </button>
+
+            {/* Mobile menu toggle button */}
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen((v) => !v)}
+              aria-label={mobileMenuOpen ? "Fermer le menu" : "Ouvrir le menu de navigation"}
+              aria-expanded={mobileMenuOpen}
+              className="lg:hidden inline-flex items-center justify-center w-10 h-10 rounded-corner-full text-text-primary hover:bg-surface-hover transition-colors cursor-pointer"
+            >
+              {mobileMenuOpen ? (
+                <X className="w-5 h-5" aria-hidden="true" />
+              ) : (
+                <Menu className="w-5 h-5" aria-hidden="true" />
+              )}
             </button>
           </div>
         </div>
+
+        {/* Mobile Navigation Drawer */}
+        {mobileMenuOpen && (
+          <div className="lg:hidden border-t border-border-secondary bg-surface-bg px-xl py-lg flex flex-col gap-lg shadow-xl animate-fade">
+            <SearchInput
+              placeholder="Rechercher un titre, un auteur…"
+              value={searchQuery}
+              onChange={setSearchQuery}
+              onSearch={() => {
+                setMobileMenuOpen(false)
+                openCatalog()
+              }}
+            />
+
+            <nav className="flex flex-col gap-xs pt-xs" aria-label="Navigation mobile">
+              {navLinks.map((link) => {
+                const active = view === link.view
+                return (
+                  <button
+                    key={link.label}
+                    onClick={() => {
+                      setMobileMenuOpen(false)
+                      link.view === "catalog" ? openCatalog() : go(link.view)
+                    }}
+                    aria-current={active ? "page" : undefined}
+                    className={`w-full text-left px-xl py-md rounded-corner-md text-label font-medium transition-colors cursor-pointer ${
+                      active
+                        ? "text-on-brand bg-brand-primary font-semibold"
+                        : "text-text-primary hover:bg-surface-hover"
+                    }`}
+                  >
+                    {link.label}
+                  </button>
+                )
+              })}
+            </nav>
+
+            <div className="h-px bg-border-secondary my-xs" />
+
+            {sessionUser ? (
+              <div className="flex flex-col gap-md">
+                <div className="flex items-center gap-md px-md py-sm rounded-corner-md bg-surface-secondary-bg">
+                  <div className="w-10 h-10 rounded-corner-full bg-brand-tertiary text-brand-primary font-bold flex items-center justify-center uppercase shrink-0">
+                    {sessionUser.name?.[0] || sessionUser.email[0] || "U"}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-label-sm font-semibold text-text-primary truncate">
+                      {sessionUser.name || "Lecteur"}
+                    </p>
+                    <p className="text-video-title text-text-tertiary truncate">
+                      {sessionUser.email}
+                    </p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-sm">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMobileMenuOpen(false)
+                      go("dashboard")
+                    }}
+                    className="py-md px-lg rounded-corner-md bg-brand-primary text-on-brand text-label-sm font-semibold hover:bg-brand-hover text-center"
+                  >
+                    Mon espace
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMobileMenuOpen(false)
+                      void handleLogout()
+                    }}
+                    className="py-md px-lg rounded-corner-md border border-border-primary text-text-secondary text-label-sm font-medium hover:bg-surface-hover text-center"
+                  >
+                    Déconnexion
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-md pt-xs">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMobileMenuOpen(false)
+                    go("login")
+                  }}
+                  className="py-md px-lg rounded-corner-md border border-border-primary text-text-primary text-label-sm font-semibold hover:bg-surface-hover text-center cursor-pointer"
+                >
+                  Se connecter
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMobileMenuOpen(false)
+                    go("register")
+                  }}
+                  className="py-md px-lg rounded-corner-md bg-brand-primary text-on-brand text-label-sm font-semibold hover:bg-brand-hover text-center cursor-pointer"
+                >
+                  Créer un compte
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </header>
 
       <main id="main" className="flex-1 w-full">
@@ -1262,16 +1421,20 @@ export default function App({
                       key={book.id}
                       onClick={() => openBook(book.id)}
                       aria-label={`Découvrir « ${book.title} »`}
-                      className={`w-28 md:w-40 aspect-[2/3] rounded-corner-md overflow-hidden shadow-2xl border-4 border-white/20 bg-brand-tertiary cursor-pointer ${
+                      className={`relative w-28 md:w-40 aspect-[2/3] rounded-corner-md overflow-hidden shadow-2xl border-4 border-white/20 bg-gradient-to-br from-[#471423] to-[#1e080f] cursor-pointer group transition-all duration-300 hover:scale-105 ${
                         i === 1 ? "mt-2xl" : ""
                       }`}
                     >
                       <img
                         src={book.cover}
-                        alt=""
+                        alt={book.title}
                         onError={handleCoverError}
-                        className="w-full h-full object-cover"
+                        className="w-full h-full object-cover transition-opacity duration-300"
                       />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-sm text-left">
+                        <span className="text-white text-[11px] font-semibold line-clamp-1">{book.title}</span>
+                        <span className="text-white/70 text-[9px] line-clamp-1">{book.author}</span>
+                      </div>
                     </button>
                   ))}
                 </div>
@@ -1523,10 +1686,14 @@ export default function App({
             books={books}
             cartItems={cartItems}
             total={cartTotal}
+            user={sessionUser}
+            loading={checkoutLoading}
             onBack={() => {
               setView("catalog")
               setCartOpen(true)
             }}
+            onLogin={() => go("login")}
+            onRegister={() => go("register")}
             onPlaceOrder={placeOrder}
           />
         )}
@@ -1878,15 +2045,17 @@ export default function App({
                   </button>
                 </li>
               ))}
-              <li>
-                <button
-                  onClick={() => go("admin")}
-                  className="inline-flex items-center gap-xs hover:text-white transition-colors cursor-pointer"
-                >
-                  <ShieldCheck className="w-3.5 h-3.5" aria-hidden="true" />{" "}
-                  Espace admin
-                </button>
-              </li>
+              {sessionUser?.role && ["admin", "super_admin", "moderator"].includes(sessionUser.role) && (
+                <li>
+                  <button
+                    onClick={() => go("admin")}
+                    className="inline-flex items-center gap-xs hover:text-white transition-colors cursor-pointer"
+                  >
+                    <ShieldCheck className="w-3.5 h-3.5" aria-hidden="true" />{" "}
+                    Espace admin
+                  </button>
+                </li>
+              )}
             </ul>
           </div>
           <div>
@@ -2151,17 +2320,11 @@ export default function App({
 
       {}
       {toast && (
-        <div
-          className="fixed bottom-xl left-1/2 -translate-x-1/2 z-[60] animate-rise"
-          role="status"
-          aria-live="polite"
-        >
-          <Toast
-            message={toast.message}
-            variant={toast.variant}
-            onDismiss={() => setToast(null)}
-          />
-        </div>
+        <Toast
+          message={toast.message}
+          variant={toast.variant}
+          onDismiss={() => setToast(null)}
+        />
       )}
     </div>
   )
@@ -2234,40 +2397,49 @@ function CheckoutView({
   books,
   cartItems,
   total,
+  user,
+  loading = false,
   onBack,
+  onLogin,
+  onRegister,
   onPlaceOrder,
 }: {
   books: Book[]
   cartItems: CartItem[]
   total: number
+  user: AuthUser | null
+  loading?: boolean
   onBack: () => void
+  onLogin: () => void
+  onRegister: () => void
   onPlaceOrder: (details: CheckoutDetails) => void
 }) {
-  const [form, setForm] = useState({ name: "", email: "", phone: "" })
-  const [provider, setProvider] = useState("orange")
-  const [step, setStep] = useState<1 | 2>(1)
-  const providers = [
-    { id: "orange", label: "Orange Money" },
-    { id: "mtn", label: "MTN MoMo" },
-    { id: "wave", label: "Wave" },
-    { id: "moov", label: "Moov Money" },
-  ]
+  const [form, setForm] = useState({
+    name: user?.name || "",
+    email: user?.email || "",
+    phone: user?.phone || "",
+  })
+
+  useEffect(() => {
+    if (user) {
+      setForm((prev) => ({
+        name: prev.name || user.name || "",
+        email: prev.email || user.email || "",
+        phone: prev.phone || user.phone || "",
+      }))
+    }
+  }, [user])
+
   const infoValid =
-    form.name.trim() &&
+    form.name.trim().length > 0 &&
     /\S+@\S+\.\S+/.test(form.email) &&
     form.phone.trim().length >= 8
-  const valid = infoValid
+
   const steps = [
     { n: 1, label: "Panier", done: true },
-    {
-      n: 2,
-      label: "Informations",
-      done: step > 1,
-    },
-    { n: 3, label: "Paiement", done: false },
-    { n: 4, label: "Confirmation", done: false },
+    { n: 2, label: "Coordonnées & Paiement", done: false, active: true },
+    { n: 3, label: "Confirmation", done: false },
   ]
-  const activeStepPos = step === 1 ? 2 : 3
 
   if (cartItems.length === 0) {
     return (
@@ -2293,20 +2465,21 @@ function CheckoutView({
         iconStart={<ChevronLeft className="w-4 h-4" />}
         onClick={onBack}
       >
-        Retour
+        Retour au panier
       </Button>
-      <h1 className="text-title font-semibold text-text-primary mt-2xl mb-2xl">
+
+      <h1 className="text-title font-semibold text-text-primary mt-xl mb-2xl">
         Finaliser la commande
       </h1>
 
-      {}
+      {/* Stepper */}
       <ol
         className="flex items-center gap-xs md:gap-md mb-2xl"
         aria-label="Étapes de la commande"
       >
         {steps.map((s, i) => {
-          const isActive = s.n === activeStepPos
-          const isDone = s.done || s.n < activeStepPos
+          const isActive = s.active
+          const isDone = s.done
           return (
             <li
               key={s.n}
@@ -2325,7 +2498,7 @@ function CheckoutView({
                         : "bg-surface-hover text-text-tertiary"
                   }`}
                 >
-                  {isDone && !isActive ? (
+                  {isDone ? (
                     <Check className="w-4 h-4" aria-hidden="true" />
                   ) : (
                     s.n
@@ -2354,100 +2527,155 @@ function CheckoutView({
 
       <div className="grid lg:grid-cols-[1fr_380px] gap-4xl items-start">
         <div className="flex flex-col gap-2xl">
-          {step === 1 && (
-            <section className="rounded-corner-lg bg-surface-bg border border-border-secondary p-xl flex flex-col gap-xl">
+          {/* User authentication status card */}
+          {!user && (
+            <div className="rounded-corner-lg bg-surface-bg border border-brand-primary/30 p-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-lg">
+              <div className="flex items-start gap-md">
+                <div className="w-10 h-10 rounded-corner-full bg-brand-tertiary text-brand-primary flex items-center justify-center shrink-0 mt-0.5">
+                  <User className="w-5 h-5" aria-hidden="true" />
+                </div>
+                <div>
+                  <h2 className="text-label font-semibold text-text-primary">
+                    Vous n'êtes pas connecté·e
+                  </h2>
+                  <p className="text-label-sm text-text-secondary mt-0.5 max-w-[42ch]">
+                    Connectez-vous pour associer vos livres à votre compte et les lire sur tous vos appareils.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-sm shrink-0 w-full sm:w-auto">
+                <button
+                  type="button"
+                  onClick={onLogin}
+                  className="flex-1 sm:flex-none px-lg py-sm rounded-corner-md border border-border-primary text-label-sm font-semibold hover:bg-surface-hover text-center cursor-pointer transition-colors"
+                >
+                  Se connecter
+                </button>
+                <button
+                  type="button"
+                  onClick={onRegister}
+                  className="flex-1 sm:flex-none px-lg py-sm rounded-corner-md bg-brand-primary text-on-brand text-label-sm font-semibold hover:bg-brand-hover text-center cursor-pointer transition-colors"
+                >
+                  Créer un compte
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Customer info form */}
+          <section className="rounded-corner-lg bg-surface-bg border border-border-secondary p-xl flex flex-col gap-xl">
+            <div className="flex items-center justify-between">
               <h2 className="text-label font-semibold text-text-primary">
                 Vos coordonnées
               </h2>
-              <InputField
-                label="Nom complet"
-                placeholder="Aminata Diallo"
-                value={form.name}
-                onChange={(v) => setForm((f) => ({ ...f, name: v }))}
-              />
-              <InputField
-                label="Adresse e-mail"
-                placeholder="aminata@exemple.com"
-                value={form.email}
-                onChange={(v) => setForm((f) => ({ ...f, email: v }))}
-              />
-              <InputField
-                label="Numéro de téléphone"
-                placeholder="+225 07 00 00 00 00"
-                value={form.phone}
-                onChange={(v) => setForm((f) => ({ ...f, phone: v }))}
-              />
-              <div className="flex justify-end pt-sm">
-                <Button
-                  variant="primary"
-                  iconEnd={<ChevronRight className="w-4 h-4" />}
-                  disabled={!infoValid}
-                  onClick={() => setStep(2)}
-                >
-                  Continuer vers le paiement
-                </Button>
-              </div>
-            </section>
-          )}
+              {user && (
+                <span className="text-video-title text-emerald-600 font-medium bg-emerald-50 px-sm py-xs rounded-corner-full">
+                  Compte vérifié ({user.email})
+                </span>
+              )}
+            </div>
 
-          {step === 2 && (
-            <section className="rounded-corner-lg bg-surface-bg border border-border-secondary p-xl flex flex-col gap-lg">
-              <h2 className="text-label font-semibold text-text-primary">
-                Moyen de paiement
-              </h2>
-              <div
-                className="grid grid-cols-2 gap-md"
-                role="radiogroup"
-                aria-label="Moyen de paiement"
-              >
-                {providers.map((p) => {
-                  const active = provider === p.id
-                  return (
-                    <button
-                      key={p.id}
-                      onClick={() => setProvider(p.id)}
-                      role="radio"
-                      aria-checked={active}
-                      className={`flex items-center gap-md px-lg py-md rounded-corner-md border text-label-sm font-medium transition-all cursor-pointer ${
-                        active
-                          ? "border-brand-primary bg-brand-tertiary text-text-primary"
-                          : "border-border-secondary text-text-secondary hover:border-brand-primary"
-                      }`}
-                    >
-                      <span
-                        className={`inline-flex items-center justify-center w-8 h-8 rounded-corner-sm ${
-                          active
-                            ? "bg-brand-primary text-on-brand"
-                            : "bg-surface-hover text-text-tertiary"
-                        }`}
-                      >
-                        <Smartphone className="w-4 h-4" aria-hidden="true" />
-                      </span>
-                      {p.label}
-                    </button>
-                  )
-                })}
+            <InputField
+              label="Nom complet"
+              placeholder="Aminata Diallo"
+              value={form.name}
+              onChange={(v) => setForm((f) => ({ ...f, name: v }))}
+            />
+            <InputField
+              label="Adresse e-mail"
+              placeholder="aminata@exemple.com"
+              value={form.email}
+              onChange={(v) => setForm((f) => ({ ...f, email: v }))}
+            />
+            <InputField
+              label="Numéro de téléphone (pour le Mobile Money)"
+              placeholder="+225 07 00 00 00 00"
+              value={form.phone}
+              onChange={(v) => setForm((f) => ({ ...f, phone: v }))}
+            />
+          </section>
+
+          {/* FedaPay gateway info */}
+          <section className="rounded-corner-lg bg-surface-bg border border-border-secondary p-xl flex flex-col gap-lg">
+            <div className="flex items-center gap-sm">
+              <div className="w-8 h-8 rounded-corner-full bg-brand-tertiary text-brand-primary flex items-center justify-center">
+                <ShieldCheck className="w-5 h-5" aria-hidden="true" />
               </div>
-              <p className="text-video-title text-text-tertiary inline-flex items-center gap-xs">
-                <ShieldCheck className="w-3.5 h-3.5" aria-hidden="true" /> Vous
-                recevrez une demande de validation sur votre téléphone.
-              </p>
-              <div className="flex justify-start pt-sm">
-                <Button
-                  variant="subtle"
-                  iconStart={<ChevronLeft className="w-4 h-4" />}
-                  onClick={() => setStep(1)}
+              <div>
+                <h2 className="text-label font-semibold text-text-primary">
+                  Paiement sécurisé FedaPay
+                </h2>
+                <p className="text-video-title text-text-tertiary">
+                  Passerelle de paiement certifiée et chiffrée
+                </p>
+              </div>
+            </div>
+
+            <p className="text-label-sm text-text-secondary leading-relaxed">
+              En cliquant sur le bouton ci-dessous, vous serez redirigé·e vers la passerelle sécurisée FedaPay pour finaliser votre règlement. Vous pourrez choisir votre opérateur préféré :
+            </p>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-sm pt-xs">
+              {[
+                { name: "Wave", badge: "Mobile Money" },
+                { name: "Orange Money", badge: "Mobile Money" },
+                { name: "MTN MoMo", badge: "Mobile Money" },
+                { name: "Moov / Carte", badge: "Moov, Visa, MC" },
+              ].map((m) => (
+                <div
+                  key={m.name}
+                  className="flex flex-col items-center justify-center p-md rounded-corner-md border border-border-secondary bg-surface-secondary-bg text-center"
                 >
-                  Retour aux informations
-                </Button>
-              </div>
-            </section>
-          )}
+                  <Smartphone className="w-4 h-4 text-brand-primary mb-1" aria-hidden="true" />
+                  <span className="text-label-sm font-semibold text-text-primary">
+                    {m.name}
+                  </span>
+                  <span className="text-[11px] text-text-tertiary">
+                    {m.badge}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            <div className="pt-md flex flex-col gap-sm">
+              <button
+                type="button"
+                disabled={!infoValid || loading}
+                onClick={() =>
+                  onPlaceOrder({
+                    name: form.name,
+                    email: form.email,
+                    phone: form.phone,
+                    provider: "fedapay",
+                  })
+                }
+                className="w-full py-lg px-2xl rounded-corner-md bg-brand-primary text-on-brand text-label font-semibold hover:bg-brand-hover disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-sm shadow-md cursor-pointer"
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin" aria-hidden="true" />
+                    <span>Initialisation du paiement FedaPay...</span>
+                  </>
+                ) : (
+                  <>
+                    <ShieldCheck className="w-5 h-5" aria-hidden="true" />
+                    <span>Payer {formatPrice(total)} avec FedaPay</span>
+                  </>
+                )}
+              </button>
+              {!infoValid && (
+                <p className="text-video-title text-text-tertiary text-center">
+                  Veuillez renseigner votre nom, email et téléphone valide pour procéder au paiement.
+                </p>
+              )}
+            </div>
+          </section>
         </div>
 
+        {/* Sidebar Summary */}
         <aside className="rounded-corner-lg bg-surface-bg border border-border-secondary p-xl flex flex-col gap-lg lg:sticky lg:top-[96px]">
           <h2 className="text-label font-semibold text-text-primary">
-            Récapitulatif
+            Récapitulatif de la commande
           </h2>
           <div className="flex flex-col gap-md">
             {cartItems.map((item) => {
@@ -2480,43 +2708,23 @@ function CheckoutView({
           </div>
           <div className="flex items-center justify-between">
             <span className="text-label font-semibold text-text-primary">
-              Total
+              Total à payer
             </span>
             <span className="text-title font-semibold text-brand-primary">
               {formatPrice(total)}
             </span>
           </div>
-          {step === 1 ? (
-            <Button
-              variant="primary"
-              iconEnd={<ChevronRight className="w-4 h-4" />}
-              disabled={!infoValid}
-              onClick={() => setStep(2)}
-            >
-              Continuer
-            </Button>
-          ) : (
-            <Button
-              variant="primary"
-              iconStart={<ShieldCheck className="w-4 h-4" />}
-              disabled={!valid}
-              onClick={() =>
-                onPlaceOrder({
-                  name: form.name,
-                  email: form.email,
-                  phone: form.phone,
-                  provider,
-                })
-              }
-            >
-              Payer {formatPrice(total)}
-            </Button>
-          )}
-          {!valid && (
-            <p className="text-video-title text-text-tertiary text-center">
-              Renseignez vos coordonnées pour continuer.
+
+          <div className="pt-sm border-t border-border-secondary flex flex-col gap-xs text-video-title text-text-tertiary">
+            <p className="inline-flex items-center gap-xs">
+              <Check className="w-3.5 h-3.5 text-brand-primary" aria-hidden="true" />
+              Accès immédiat à la lecture après validation
             </p>
-          )}
+            <p className="inline-flex items-center gap-xs">
+              <ShieldCheck className="w-3.5 h-3.5 text-brand-primary" aria-hidden="true" />
+              Transactions chiffrées de bout en bout
+            </p>
+          </div>
         </aside>
       </div>
     </div>
@@ -2561,8 +2769,8 @@ function AdminView({
   books: Book[]
   orders: Order[]
   onSaveBook: (book: Book) => void
-  onDeleteBook: (id: number) => void
-  onTogglePublish: (id: number) => void
+  onDeleteBook: (id: string) => void
+  onTogglePublish: (id: string) => void
   onSetOrderStatus: (id: string, status: OrderStatus) => void
   onExit: () => void
 }) {
@@ -2601,7 +2809,7 @@ function AdminView({
     ? books.reduce((s, b) => s + b.rating, 0) / books.length
     : 0
   const unitsByBook = useMemo(() => {
-    const map = new Map<number, number>()
+    const map = new Map<string, number>()
     orders
       .filter((o) => o.status !== "refunded")
       .forEach((o) =>
@@ -2990,7 +3198,7 @@ function AdminView({
             <div className="flex flex-col gap-lg max-w-[1100px]">
               <div className="flex items-center justify-between gap-lg">
                 <div className="w-full max-w-[360px]">
-                  <SearchComponent
+                  <SearchInput
                     placeholder="Rechercher un titre, un auteur…"
                     value={catalogQuery}
                     onChange={setCatalogQuery}
@@ -3330,7 +3538,7 @@ function BookForm({
   onSave,
 }: {
   book: Book | null
-  existingIds: number[]
+  existingIds: string[]
   onClose: () => void
   onSave: (book: Book) => void
 }) {
@@ -3353,7 +3561,10 @@ function BookForm({
   const submit = () => {
     if (!valid) return
     const id =
-      book?.id ?? (existingIds.length ? Math.max(...existingIds) + 1 : 1)
+      book?.id ??
+      (typeof crypto !== "undefined" && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `book-${Date.now()}`)
     const description =
       form.description.trim() ||
       `Un titre de ${form.author.trim()} disponible en lecture en ligne sur YéYéBook.`
