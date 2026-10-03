@@ -1,3 +1,4 @@
+import { extractApiErrorMessage } from "@/lib/api-errors"
 import { getPublicApiBaseUrl } from "@/lib/runtime-env"
 
 const API_BASE_URL = getPublicApiBaseUrl()
@@ -54,19 +55,12 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   } | null
 
   if (!response.ok) {
-    let message = "Une erreur est survenue lors de l'opération."
-    if (payload && typeof payload === "object") {
-      if ("message" in payload && typeof payload.message === "string") {
-        message = payload.message
-      } else if ("detail" in payload) {
-        if (typeof payload.detail === "string") {
-          message = payload.detail
-        } else if (payload.detail && typeof payload.detail === "object" && "message" in payload.detail) {
-          message = String(payload.detail.message)
-        }
-      }
-    }
-    throw new Error(message)
+    throw new Error(
+      extractApiErrorMessage(
+        payload,
+        "Une erreur est survenue lors de l'opération de commande ou de paiement.",
+      ),
+    )
   }
 
   if (!payload) {

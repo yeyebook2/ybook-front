@@ -9,6 +9,10 @@ export type ToastProps = {
 }
 
 export function Toast({ message, variant = "default", onDismiss }: ToastProps) {
+  if (!message || typeof message !== "string" || !message.trim()) {
+    return null
+  }
+  const cleanMessage = message.trim()
   const variantStyles = {
     default: {
       bg: "bg-surface-bg border-border-primary text-text-primary",
@@ -40,7 +44,7 @@ export function Toast({ message, variant = "default", onDismiss }: ToastProps) {
       >
         {current.icon}
         <p className="text-label-sm font-medium flex-1 pt-0.5 leading-snug">
-          {message}
+          {cleanMessage}
         </p>
         <button
           type="button"

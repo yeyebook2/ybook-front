@@ -73,7 +73,7 @@ import {
 } from "@/features/auth/auth.api"
 import type { AuthApiResponse, AuthUser } from "@/features/auth/types"
 import { DashboardPage } from "@/features/dashboard/pages/DashboardPage"
-import { getLibraryBookIds } from "@/features/dashboard/dashboard.api"
+import { getLibraryBookIds, getLibraryItems } from "@/features/dashboard/dashboard.api"
 import type { DashboardBook } from "@/features/dashboard/types"
 import { loadCart, MAX_CART_QUANTITY, saveCart } from "@/features/cart"
 import type { CartItem } from "@/features/cart"
@@ -84,6 +84,7 @@ import {
   DEFAULT_CATALOG_FILTERS,
 } from "@/features/catalog/catalog.constants"
 import { BookDetailPage } from "@/features/book-details"
+import { getBookDetail } from "@/features/book-details/book-details.api"
 import { formatPrice, handleCoverError } from "@/features/catalog/catalog.utils"
 import { BookCard } from "@/features/catalog/components/BookCard"
 import { RatingStars } from "@/features/catalog/components/RatingStars"
@@ -125,6 +126,7 @@ import {
   Menu,
   User,
   Loader2,
+  AlertCircle,
   ChevronDown,
 } from "lucide-react"
 
@@ -195,7 +197,7 @@ function loadProgress(): Progress {
 export default function App({
   initialView = "home",
   initialBookSlug,
-  initialReaderSlug: _initialReaderSlug,
+  initialReaderSlug,
 }: {
   initialView?: View
   initialBookSlug?: string
@@ -203,6 +205,17 @@ export default function App({
 }) {
   const router = useRouter()
   const [view, setView] = useState<View>(initialView)
+  const [currentBookSlug, setCurrentBookSlug] = useState<string | null>(
+    initialBookSlug ?? null,
+  )
+  const [currentReaderSlug, setCurrentReaderSlug] = useState<string | null>(
+    initialReaderSlug ?? null,
+  )
+  const [readerBookData, setReaderBookData] = useState<Book | null>(null)
+  const [readerLoading, setReaderLoading] = useState(false)
+  const [readerError, setReaderError] = useState<string | null>(null)
+  const [purchasedBooks, setPurchasedBooks] = useState<Book[]>([])
+
   const [sessionUser, setSessionUser] = useState<AuthUser | null>(null)
   const [sessionChecked, setSessionChecked] = useState(false)
   const [books, setBooks] = useState<Book[]>([])
@@ -237,22 +250,69 @@ export default function App({
     chapter: number
   } | null>(null)
 
+  const showToast = useCallback(
+    (message?: string | null, variant: ToastVariant = "default") => {
+      if (!message || typeof message !== "string" || !message.trim()) return
+      setToast({ message: message.trim(), variant })
+    },
+    [],
+  )
+
   const refreshLibrary = useCallback(async () => {
     try {
-      const ids = await getLibraryBookIds()
-      if (ids && ids.length > 0) {
+      const items = await getLibraryItems()
+      if (items && items.length > 0) {
+        const ids = items.map((i) => i.id)
         setLibrary((prev) => Array.from(new Set([...prev, ...ids])))
+        setPurchasedBooks(
+          items.map((i) => ({
+            id: i.id,
+            title: i.title,
+            author: i.author,
+            category: i.category,
+            price: i.price ?? 0,
+            cover: i.cover,
+            slug: i.slug,
+            rating: 5,
+            reviews: 1,
+            pages: 150,
+            year: 2026,
+            description: "",
+            chapters: [],
+          })),
+        )
+      } else {
+        const ids = await getLibraryBookIds()
+        if (ids && ids.length > 0) {
+          setLibrary((prev) => Array.from(new Set([...prev, ...ids])))
+        }
       }
     } catch {}
   }, [])
 
   const selectedBook = useMemo(
-    () => books.find((b) => b.id === selectedBookId),
-    [books, selectedBookId],
+    () =>
+      books.find(
+        (b) =>
+          b.id === selectedBookId ||
+          (currentBookSlug && b.slug === currentBookSlug),
+      ),
+    [books, selectedBookId, currentBookSlug],
   )
   const readerBook = useMemo(
-    () => books.find((b) => b.id === readerBookId),
-    [books, readerBookId],
+    () =>
+      books.find(
+        (b) =>
+          b.id === readerBookId ||
+          (currentReaderSlug && b.slug === currentReaderSlug),
+      ) ||
+      purchasedBooks.find(
+        (b) =>
+          b.id === readerBookId ||
+          (currentReaderSlug && b.slug === currentReaderSlug),
+      ) ||
+      readerBookData,
+    [books, purchasedBooks, readerBookId, currentReaderSlug, readerBookData],
   )
 
   const cartTotal = useMemo(
@@ -356,6 +416,106 @@ export default function App({
   }, [refreshLibrary, view])
 
   useEffect(() => {
+    if (initialBookSlug) {
+      setCurrentBookSlug(initialBookSlug)
+      setView("details")
+    }
+  }, [initialBookSlug])
+
+  useEffect(() => {
+    if (initialReaderSlug) {
+      setCurrentReaderSlug(initialReaderSlug)
+      setView("reader")
+    }
+  }, [initialReaderSlug])
+
+  useEffect(() => {
+    if (view !== "reader") return
+    const slugToLoad = currentReaderSlug || initialReaderSlug
+    if (!slugToLoad) return
+
+    if (
+      (readerBookData?.slug === slugToLoad &&
+        readerBookData.chapters &&
+        readerBookData.chapters.length > 0) ||
+      (readerBook?.slug === slugToLoad &&
+        readerBook.chapters &&
+        readerBook.chapters.length > 0)
+    ) {
+      return
+    }
+
+    let active = true
+    setReaderLoading(true)
+    setReaderError(null)
+
+    void getBookDetail(slugToLoad)
+      .then((detail) => {
+        if (!active) return
+        const b = detail.book
+        const chapters =
+          b.chapters && b.chapters.length > 0
+            ? b.chapters
+            : [
+                {
+                  title: `Présentation & Extrait — ${b.title}`,
+                  content:
+                    (b.description || "")
+                      .split("\n\n")
+                      .map((p) => p.trim())
+                      .filter(Boolean).length > 0
+                      ? (b.description || "")
+                          .split("\n\n")
+                          .map((p) => p.trim())
+                          .filter(Boolean)
+                      : [
+                          `Bienvenue dans la lecture de « ${b.title} » par ${b.author}.`,
+                          "Cet e-book est disponible dans votre bibliothèque personnelle.",
+                          "Profitez de votre espace de lecture en ligne sur YéYéBook.",
+                        ],
+                },
+              ]
+        const fullBook: Book = {
+          id: b.id,
+          title: b.title,
+          subtitle: b.subtitle,
+          author: b.author,
+          authorSlug: b.authorSlug,
+          price: b.price,
+          category: b.category,
+          rating: b.rating,
+          reviews: b.reviews,
+          pages: b.pages,
+          year: b.year,
+          isbn: b.isbn,
+          cover: b.cover,
+          description: b.description,
+          tags: b.tags,
+          chapters,
+          slug: b.slug,
+          language: b.language,
+        }
+        setReaderBookData(fullBook)
+        setReaderBookId(fullBook.id)
+      })
+      .catch((err) => {
+        if (!active) return
+        setReaderError(
+          err instanceof Error
+            ? err.message
+            : "Impossible de charger cet e-book pour le moment.",
+        )
+      })
+      .finally(() => {
+        if (active) setReaderLoading(false)
+      })
+
+    return () => {
+      active = false
+    }
+  }, [view, currentReaderSlug, initialReaderSlug, readerBook, readerBookData])
+
+  useEffect(() => {
     if (!toast) return
     const duration =
       toast.variant === "error" || toast.variant === "warning" ? 6500 : 3200
@@ -434,18 +594,19 @@ export default function App({
     [router],
   )
 
-  const openBook = (id: string) => {
-    const book = books.find((candidate) => candidate.id === id)
-    if (!book?.slug) {
-      setToast({
-        message: "Impossible d’ouvrir ce livre : ses données sont indisponibles.",
-        variant: "error",
-      })
-      return
-    }
+  const openBook = (idOrBook: string | { id: string; slug?: string }) => {
+    const id = typeof idOrBook === "string" ? idOrBook : idOrBook.id
+    const book =
+      books.find((candidate) => candidate.id === id) ||
+      purchasedBooks.find((candidate) => candidate.id === id) ||
+      (typeof idOrBook === "object" ? idOrBook : undefined)
+    const slug = book?.slug
     setSelectedBookId(id)
+    if (slug) {
+      setCurrentBookSlug(slug)
+      router.push(`/books/${slug}`)
+    }
     setView("details")
-    router.push(`/books/${book.slug}`)
   }
   const openCatalog = (category?: string) => {
     setActiveCategory(category ?? "Tous")
@@ -617,31 +778,48 @@ export default function App({
   const setOrderStatus = (id: string, status: OrderStatus) => {
     setOrders((prev) => prev.map((o) => (o.id === id ? { ...o, status } : o)))
   }
-  const startReading = (bookId: string) => {
-    const book = books.find((b) => b.id === bookId)
-    if (!book) return
+  const startReading = (bookId: string, slug?: string) => {
+    const book =
+      books.find((b) => b.id === bookId || (slug && b.slug === slug)) ||
+      purchasedBooks.find((b) => b.id === bookId || (slug && b.slug === slug))
+    const targetSlug = slug || book?.slug
+
+    if (book) {
+      setReaderBookId(book.id)
+      setReaderBookData(book)
+    } else if (targetSlug) {
+      setCurrentReaderSlug(targetSlug)
+    }
+
     const saved = progress[bookId]
-    if (saved !== undefined && saved > 0) {
+    if (saved !== undefined && saved > 0 && book) {
       setResumePrompt({ book, chapter: saved })
       return
     }
-    openReaderAt(bookId, saved ?? 0)
+    openReaderAt(bookId, saved ?? 0, targetSlug)
   }
 
-  const openReaderAt = (bookId: string, chapter: number) => {
+  const openReaderAt = (bookId: string, chapter: number, slug?: string) => {
     setReaderBookId(bookId)
     setCurrentChapter(chapter)
     setChapterListOpen(false)
     setResumePrompt(null)
     setView("reader")
     setProgress((prev) => ({ ...prev, [bookId]: chapter }))
-    const targetBook = books.find((book) => book.id === bookId)
-    if (targetBook?.slug) router.push(`/reader/${targetBook.slug}`)
+    const targetSlug =
+      slug ||
+      books.find((book) => book.id === bookId)?.slug ||
+      purchasedBooks.find((book) => book.id === bookId)?.slug
+    if (targetSlug) {
+      setCurrentReaderSlug(targetSlug)
+      router.push(`/reader/${targetSlug}`)
+    }
   }
 
   const goToChapter = (index: number) => {
     if (!readerBook) return
-    const clamped = Math.max(0, Math.min(index, readerBook.chapters.length - 1))
+    const chaptersCount = readerBook.chapters?.length || 1
+    const clamped = Math.max(0, Math.min(index, chaptersCount - 1))
     setCurrentChapter(clamped)
     setChapterListOpen(false)
     setProgress((prev) => ({ ...prev, [readerBook.id]: clamped }))
@@ -655,8 +833,28 @@ export default function App({
   const bestSellers = [...visibleBooks]
     .sort((a, b) => b.reviews - a.reviews)
     .slice(0, 10)
-  const libraryBooks = books.filter((b) => library.includes(b.id))
-  const ownsSelected = selectedBook ? library.includes(selectedBook.id) : false
+  const libraryBooks = useMemo(() => {
+    const map = new Map<string, Book>()
+    for (const b of purchasedBooks) {
+      map.set(b.id, b)
+    }
+    for (const b of books) {
+      if (library.includes(b.id)) {
+        map.set(b.id, b)
+      }
+    }
+    return Array.from(map.values())
+  }, [purchasedBooks, books, library])
+  const ownsSelected = selectedBook
+    ? library.includes(selectedBook.id)
+    : currentBookSlug
+      ? library.some((id) => {
+          const b =
+            books.find((cand) => cand.id === id) ||
+            purchasedBooks.find((cand) => cand.id === id)
+          return b?.slug === currentBookSlug
+        })
+      : false
 
   const navLinks: NavLink[] = [
     { label: "Accueil", view: "home" },
@@ -826,8 +1024,49 @@ export default function App({
   }
   if (view === "reader") {
     if (!readerBook) {
+      if (readerLoading) {
+        return (
+          <div className="min-h-screen flex flex-col items-center justify-center p-xl bg-surface-secondary-bg text-center animate-fade">
+            <Loader2 className="w-12 h-12 text-brand-primary animate-spin mb-md" aria-hidden="true" />
+            <h1 className="text-heading font-semibold text-text-primary mb-sm">
+              Chargement de votre e-book...
+            </h1>
+            <p className="text-label-sm text-text-secondary max-w-md">
+              Préparation du texte numérique et de votre confort de lecture.
+            </p>
+          </div>
+        )
+      }
+      if (readerError) {
+        return (
+          <div className="min-h-screen flex flex-col items-center justify-center p-xl bg-surface-secondary-bg text-center animate-fade">
+            <AlertCircle className="w-12 h-12 text-[#c13f4e] mb-md" aria-hidden="true" />
+            <h1 className="text-heading font-semibold text-text-primary mb-sm">
+              Impossible d'ouvrir ce livre
+            </h1>
+            <p className="text-label-sm text-text-secondary max-w-md mb-xl">
+              {readerError}
+            </p>
+            <div className="flex flex-wrap gap-md justify-center">
+              <Button variant="primary" onClick={() => go("library")}>
+                Ma bibliothèque
+              </Button>
+              <Button variant="neutral" onClick={() => go("catalog")}>
+                Catalogue
+              </Button>
+            </div>
+            {toast && (
+              <Toast
+                message={toast.message}
+                variant={toast.variant}
+                onDismiss={() => setToast(null)}
+              />
+            )}
+          </div>
+        )
+      }
       return (
-        <div className="min-h-screen flex flex-col items-center justify-center p-xl bg-surface-secondary-bg text-center">
+        <div className="min-h-screen flex flex-col items-center justify-center p-xl bg-surface-secondary-bg text-center animate-fade">
           <BookText className="w-12 h-12 text-brand-primary mb-md" aria-hidden="true" />
           <h1 className="text-heading font-semibold text-text-primary mb-sm">
             Chargement de votre lecture...
@@ -835,9 +1074,14 @@ export default function App({
           <p className="text-label-sm text-text-secondary max-w-md mb-xl">
             Veuillez patienter pendant l'accès au texte numérique de votre e-book.
           </p>
-          <Button variant="primary" onClick={() => go("library")}>
-            Retour à la bibliothèque
-          </Button>
+          <div className="flex flex-wrap gap-md justify-center">
+            <Button variant="primary" onClick={() => go("library")}>
+              Ma bibliothèque
+            </Button>
+            <Button variant="neutral" onClick={() => go("catalog")}>
+              Catalogue
+            </Button>
+          </div>
           {toast && (
             <Toast
               message={toast.message}
@@ -1880,16 +2124,21 @@ export default function App({
           />
         )}
 
-        {}
-        {view === "details" && selectedBook && (
+        {/* Details View */}
+        {view === "details" && (
           <BookDetailPage
-            bookSlug={selectedBook.slug}
-            fallbackBook={undefined}
+            bookSlug={
+              currentBookSlug ||
+              selectedBook?.slug ||
+              initialBookSlug ||
+              undefined
+            }
+            fallbackBook={selectedBook}
             isAuthenticated={Boolean(sessionUser)}
             owned={ownsSelected}
-            progress={progress[selectedBook.id]}
-            onBack={() => openCatalog(selectedBook.category)}
-            onOpenBook={(book) => openBook(book.id)}
+            progress={selectedBook ? progress[selectedBook.id] : undefined}
+            onBack={() => openCatalog(selectedBook?.category)}
+            onOpenBook={(book) => openBook(book)}
             onOpenAuthor={() => showComingSoon("Auteur")}
             onAddToCart={(book) => addToCart(book.id)}
             onBuyNow={(book) => {
@@ -1897,9 +2146,9 @@ export default function App({
               setCartOpen(false)
               go("checkout")
             }}
-            onStartReading={(book) => startReading(book.id)}
+            onStartReading={(book) => startReading(book.id, book.slug)}
             onToast={(message, variant = "success") =>
-              setToast({ message, variant })
+              showToast(message, variant)
             }
           />
         )}
@@ -2067,12 +2316,16 @@ export default function App({
                   const saved = progress[book.id]
                   const started = saved !== undefined && saved > 0
                   const pct = started
-                    ? Math.round(((saved + 1) / book.chapters.length) * 100)
+                    ? Math.round(
+                        ((saved + 1) /
+                          Math.max(1, book.chapters?.length || 1)) *
+                          100,
+                      )
                     : 0
                   return (
                     <div key={book.id} className="flex flex-col gap-lg">
                       <button
-                        onClick={() => startReading(book.id)}
+                        onClick={() => startReading(book.id, book.slug)}
                         aria-label={`Lire « ${book.title} »`}
                         className="relative aspect-[2/3] rounded-corner-lg overflow-hidden border border-border-secondary shadow-sm bg-brand-tertiary group cursor-pointer"
                       >
@@ -2125,7 +2378,7 @@ export default function App({
                             <BookText className="w-4 h-4" />
                           )
                         }
-                        onClick={() => startReading(book.id)}
+                        onClick={() => startReading(book.id, book.slug)}
                       >
                         {started ? "Reprendre" : "Commencer la lecture"}
                       </Button>
