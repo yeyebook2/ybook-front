@@ -16,6 +16,8 @@ import { RecommendationCard } from "../components/RecommendationCard"
 import { SummaryCard } from "../components/SummaryCard"
 import type { DashboardBook, DashboardResponse } from "../types"
 
+import type { ToastVariant } from "@/components/ui/Toast"
+
 type DashboardPageProps = {
   user: AuthUser
   onHome: () => void
@@ -24,7 +26,7 @@ type DashboardPageProps = {
   onLogout: () => void
   onOpenBook: (bookId: string) => void
   onAddToCart: (book: DashboardBook) => void
-  onToast: (message: string) => void
+  onToast: (message: string, variant?: ToastVariant) => void
 }
 
 export function DashboardPage({
@@ -57,7 +59,7 @@ export function DashboardPage({
           ? loadError.message
           : "Impossible de charger votre espace."
       setError(message)
-      onToast(message)
+      onToast(message, "error")
     } finally {
       setLoading(false)
     }

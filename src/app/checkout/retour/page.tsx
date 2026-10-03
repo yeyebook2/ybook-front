@@ -23,6 +23,7 @@ function CheckoutRetourContent() {
       setSuccess(statusParam === "approved")
       if (statusParam === "approved") {
         saveCart([])
+        try { localStorage.setItem("ybook-library-refresh-needed", "true") } catch {}
       }
       return
     }
@@ -34,6 +35,7 @@ function CheckoutRetourContent() {
         if (data.order_status === "paid" || data.payment?.status === "completed" || statusParam === "approved") {
           setSuccess(true)
           saveCart([])
+          try { localStorage.setItem("ybook-library-refresh-needed", "true") } catch {}
         } else {
           setSuccess(false)
           setErrorMessage("Le paiement n'a pas été validé par la passerelle.")
@@ -44,6 +46,7 @@ function CheckoutRetourContent() {
         if (statusParam === "approved") {
           setSuccess(true)
           saveCart([])
+          try { localStorage.setItem("ybook-library-refresh-needed", "true") } catch {}
         } else {
           setSuccess(false)
           setErrorMessage(

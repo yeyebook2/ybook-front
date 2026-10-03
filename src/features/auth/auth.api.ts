@@ -1,3 +1,4 @@
+import { extractApiErrorMessage } from "@/lib/api-errors"
 import { getPublicApiBaseUrl } from "@/lib/runtime-env"
 import type {
   AuthApiResponse,
@@ -41,18 +42,16 @@ async function request<T>(path: string, init: RequestInit): Promise<T> {
   })
 
   const payload = (await response.json().catch(() => null)) as T | {
+    detail?: unknown
     message?: string
   } | null
 
   if (!response.ok) {
     throw new Error(
-      payload &&
-        typeof payload === "object" &&
-        "message" in payload &&
-        typeof payload.message === "string" &&
-        payload.message
-        ? payload.message
-        : "Une erreur est survenue. Réessayez.",
+      extractApiErrorMessage(
+        payload,
+        "Une erreur est survenue. Veuillez vérifier vos informations et réessayer.",
+      ),
     )
   }
 
@@ -64,6 +63,13 @@ function normalizeUser(
 ): AuthUser | undefined {
   if (!user?.email || user.id === undefined) return undefined
 
+  let fallbackPhone: string | undefined
+  if (typeof window !== "undefined") {
+    try {
+      fallbackPhone = localStorage.getItem("ybook-user-phone") || undefined
+    } catch {}
+  }
+
   return {
     id: String(user.id),
     name:
@@ -71,7 +77,7 @@ function normalizeUser(
       [user.first_name, user.last_name].filter(Boolean).join(" ") ||
       user.email,
     email: user.email,
-    phone: user.phone,
+    phone: user.phone || fallbackPhone,
     role: user.role,
   }
 }
@@ -118,6 +124,12 @@ export async function register(
       },
     }),
   })
+
+  if (typeof window !== "undefined" && values.phone?.trim()) {
+    try {
+      localStorage.setItem("ybook-user-phone", values.phone.trim())
+    } catch {}
+  }
 
   return adaptAuthResponse(payload, "Compte créé avec succès.")
 }

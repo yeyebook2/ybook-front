@@ -1,3 +1,4 @@
+import { extractApiErrorMessage } from "@/lib/api-errors"
 import { CATALOG_CATEGORIES, CATALOG_LANGUAGES } from "./catalog.constants"
 import { getPublicApiBaseUrl } from "@/lib/runtime-env"
 import type {
@@ -94,13 +95,11 @@ async function requestCatalog(
   })
   const payload = (await response
     .json()
-    .catch(() => null)) as BackendCatalogResponse | { message?: string } | null
+    .catch(() => null)) as BackendCatalogResponse | { detail?: unknown; message?: string } | null
 
   if (!response.ok) {
     throw new Error(
-      payload && "message" in payload && payload.message
-        ? payload.message
-        : "Impossible de charger le catalogue.",
+      extractApiErrorMessage(payload, "Impossible de charger le catalogue de livres."),
     )
   }
 

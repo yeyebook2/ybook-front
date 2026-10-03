@@ -1,3 +1,4 @@
+import { extractApiErrorMessage } from "@/lib/api-errors"
 import { getPublicApiBaseUrl } from "@/lib/runtime-env"
 import type { AuthUser } from "@/features/auth/types"
 
@@ -43,18 +44,13 @@ async function request<T>(path: string): Promise<T> {
   })
 
   const payload = (await response.json().catch(() => null)) as T | {
+    detail?: unknown
     message?: string
   } | null
 
   if (!response.ok) {
     throw new Error(
-      payload &&
-        typeof payload === "object" &&
-        "message" in payload &&
-        typeof payload.message === "string" &&
-        payload.message
-        ? payload.message
-        : "Impossible de charger votre espace.",
+      extractApiErrorMessage(payload, "Impossible de charger votre espace lecteur."),
     )
   }
 
@@ -155,4 +151,31 @@ export async function getDashboard(user: AuthUser): Promise<DashboardResponse> {
     throw new Error("L’URL de l’API n’est pas configurée.")
   }
   return loadProductionDashboard(user)
+}
+
+export async function getLibraryBookIds(): Promise<string[]> {
+  try {
+    const response = await request<CollectionResponse<BackendLibraryItem>>(
+      "/library?page=1&limit=100&sort_by=recent",
+    )
+    return response.items
+      .map((item) => {
+        const id = item.book?.id ?? item.book_id
+        return id !== undefined && id !== null ? String(id) : null
+      })
+      .filter((id): id is string => Boolean(id))
+  } catch {
+    return []
+  }
+}
+
+export async function getLibraryItems(): Promise<DashboardBook[]> {
+  try {
+    const response = await request<CollectionResponse<BackendLibraryItem>>(
+      "/library?page=1&limit=100&sort_by=recent",
+    )
+    return response.items.map(mapBook)
+  } catch {
+    return []
+  }
 }

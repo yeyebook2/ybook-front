@@ -73,6 +73,7 @@ import {
 } from "@/features/auth/auth.api"
 import type { AuthApiResponse, AuthUser } from "@/features/auth/types"
 import { DashboardPage } from "@/features/dashboard/pages/DashboardPage"
+import { getLibraryBookIds } from "@/features/dashboard/dashboard.api"
 import type { DashboardBook } from "@/features/dashboard/types"
 import { loadCart, MAX_CART_QUANTITY, saveCart } from "@/features/cart"
 import type { CartItem } from "@/features/cart"
@@ -86,7 +87,7 @@ import { BookDetailPage } from "@/features/book-details"
 import { formatPrice, handleCoverError } from "@/features/catalog/catalog.utils"
 import { BookCard } from "@/features/catalog/components/BookCard"
 import { RatingStars } from "@/features/catalog/components/RatingStars"
-import type { Book } from "@/features/catalog/types"
+import type { Book, Chapter } from "@/features/catalog/types"
 import {
   ShoppingBag,
   ChevronLeft,
@@ -124,6 +125,7 @@ import {
   Menu,
   User,
   Loader2,
+  ChevronDown,
 } from "lucide-react"
 
 export type View = "home" | "catalog" | "details" | "checkout" | "confirmation" | "library" | "reader" | "admin" | "login" | "register" | "dashboard"
@@ -214,6 +216,7 @@ export default function App({
   const [cartOpen, setCartOpen] = useState(false)
   const [toast, setToast] = useState<ToastState>(null)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [checkoutLoading, setCheckoutLoading] = useState(false)
 
   const [libGrid, setLibGrid] = useState(true)
@@ -233,6 +236,15 @@ export default function App({
     book: Book
     chapter: number
   } | null>(null)
+
+  const refreshLibrary = useCallback(async () => {
+    try {
+      const ids = await getLibraryBookIds()
+      if (ids && ids.length > 0) {
+        setLibrary((prev) => Array.from(new Set([...prev, ...ids])))
+      }
+    } catch {}
+  }, [])
 
   const selectedBook = useMemo(
     () => books.find((b) => b.id === selectedBookId),
@@ -263,7 +275,36 @@ export default function App({
     })
       .then((response) => {
         if (!active) return
-        setBooks(response.items.map((book) => ({ ...book, chapters: [] })))
+        setBooks(
+          response.items.map((book) => {
+            const rawBook = book as unknown as { chapters?: Chapter[] }
+            return {
+              ...book,
+              chapters:
+                rawBook.chapters && rawBook.chapters.length > 0
+                  ? rawBook.chapters
+                  : [
+                      {
+                        title: `Présentation & Extrait — ${book.title}`,
+                        content:
+                        (book.description || "")
+                          .split("\n\n")
+                          .map((p) => p.trim())
+                          .filter(Boolean).length > 0
+                          ? (book.description || "")
+                              .split("\n\n")
+                              .map((p) => p.trim())
+                              .filter(Boolean)
+                          : [
+                              `Bienvenue dans la lecture de « ${book.title} » par ${book.author}.`,
+                              "Cet e-book est disponible dans votre bibliothèque personnelle.",
+                              "Profitez de votre espace de lecture en ligne sur YéYéBook.",
+                            ],
+                    },
+                  ],
+            }
+          }),
+        )
       })
       .catch((reason: unknown) => {
         if (!active) return
@@ -281,12 +322,16 @@ export default function App({
       active = false
     }
   }, [])
+
   useEffect(() => {
     let active = true
     void getCurrentUser()
       .then((user) => {
         if (!active) return
         setSessionUser(user)
+        if (user) {
+          void refreshLibrary()
+        }
       })
       .catch(() => {
         if (!active) return
@@ -299,13 +344,45 @@ export default function App({
     return () => {
       active = false
     }
-  }, [])
+  }, [refreshLibrary])
+
+  useEffect(() => {
+    try {
+      if (localStorage.getItem("ybook-library-refresh-needed") === "true") {
+        localStorage.removeItem("ybook-library-refresh-needed")
+        void refreshLibrary()
+      }
+    } catch {}
+  }, [refreshLibrary, view])
 
   useEffect(() => {
     if (!toast) return
-    const t = setTimeout(() => setToast(null), 3200)
+    const duration =
+      toast.variant === "error" || toast.variant === "warning" ? 6500 : 3200
+    const t = setTimeout(() => setToast(null), duration)
     return () => clearTimeout(t)
   }, [toast])
+
+  useEffect(() => {
+    if (!userMenuOpen) return
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement
+      if (!target.closest("#user-menu-container")) {
+        setUserMenuOpen(false)
+      }
+    }
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setUserMenuOpen(false)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    document.addEventListener("keydown", handleKeyDown)
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside)
+      document.removeEventListener("keydown", handleKeyDown)
+    }
+  }, [userMenuOpen])
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "smooth" })
@@ -694,16 +771,25 @@ export default function App({
         onUnauthenticated={redirectToLogin}
       >
         {sessionUser ? (
-          <DashboardPage
-            user={sessionUser}
-            onHome={() => go("home")}
-            onCatalog={() => go("catalog")}
-            onLibrary={() => go("library")}
-            onLogout={() => void handleLogout()}
-            onOpenBook={openBook}
-            onAddToCart={addDashboardBookToCart}
-            onToast={(message) => setToast({ message, variant: "success" })}
-          />
+          <>
+            <DashboardPage
+              user={sessionUser}
+              onHome={() => go("home")}
+              onCatalog={() => go("catalog")}
+              onLibrary={() => go("library")}
+              onLogout={() => void handleLogout()}
+              onOpenBook={openBook}
+              onAddToCart={addDashboardBookToCart}
+              onToast={(message, variant = "default") => setToast({ message, variant })}
+            />
+            {toast && (
+              <Toast
+                message={toast.message}
+                variant={toast.variant}
+                onDismiss={() => setToast(null)}
+              />
+            )}
+          </>
         ) : null}
       </AuthGuard>
     )
@@ -738,10 +824,57 @@ export default function App({
       </RoleGuard>
     )
   }
-  if (view === "reader" && readerBook) {
-    const chapter = readerBook.chapters[currentChapter]
-    const total = readerBook.chapters.length
-    const pct = Math.round(((currentChapter + 1) / total) * 100)
+  if (view === "reader") {
+    if (!readerBook) {
+      return (
+        <div className="min-h-screen flex flex-col items-center justify-center p-xl bg-surface-secondary-bg text-center">
+          <BookText className="w-12 h-12 text-brand-primary mb-md" aria-hidden="true" />
+          <h1 className="text-heading font-semibold text-text-primary mb-sm">
+            Chargement de votre lecture...
+          </h1>
+          <p className="text-label-sm text-text-secondary max-w-md mb-xl">
+            Veuillez patienter pendant l'accès au texte numérique de votre e-book.
+          </p>
+          <Button variant="primary" onClick={() => go("library")}>
+            Retour à la bibliothèque
+          </Button>
+          {toast && (
+            <Toast
+              message={toast.message}
+              variant={toast.variant}
+              onDismiss={() => setToast(null)}
+            />
+          )}
+        </div>
+      )
+    }
+
+    const safeChapters =
+      readerBook.chapters && readerBook.chapters.length > 0
+        ? readerBook.chapters
+        : [
+            {
+              title: `Présentation & Extrait — ${readerBook.title}`,
+              content:
+                (readerBook.description || "")
+                  .split("\n\n")
+                  .map((p) => p.trim())
+                  .filter(Boolean).length > 0
+                  ? (readerBook.description || "")
+                      .split("\n\n")
+                      .map((p) => p.trim())
+                      .filter(Boolean)
+                  : [
+                      `Bienvenue dans votre lecture numérique de « ${readerBook.title} » par ${readerBook.author}.`,
+                      "Cet e-book est enregistré dans votre bibliothèque personnelle.",
+                      "Profitez de votre espace de lecture en ligne sur YéYéBook.",
+                    ],
+            },
+          ]
+    const total = Math.max(1, safeChapters.length)
+    const safeChapterIndex = Math.max(0, Math.min(currentChapter, total - 1))
+    const chapter = safeChapters[safeChapterIndex] || safeChapters[0]
+    const pct = Math.round(((safeChapterIndex + 1) / total) * 100)
     const themes = {
       light: {
         page: "#fff6eb",
@@ -766,13 +899,13 @@ export default function App({
       },
     } as const
     const t = themes[readerTheme]
-    const bookmarked = (bookmarks[readerBook.id] ?? []).includes(currentChapter)
+    const bookmarked = (bookmarks[readerBook.id] ?? []).includes(safeChapterIndex)
     const toggleBookmark = () =>
       setBookmarks((prev) => {
         const list = prev[readerBook.id] ?? []
-        const next = list.includes(currentChapter)
-          ? list.filter((c) => c !== currentChapter)
-          : [...list, currentChapter]
+        const next = list.includes(safeChapterIndex)
+          ? list.filter((c) => c !== safeChapterIndex)
+          : [...list, safeChapterIndex]
         return { ...prev, [readerBook.id]: next }
       })
 
@@ -922,8 +1055,8 @@ export default function App({
             style={{ borderRight: `1px solid ${t.rule}` }}
           >
             <ChapterList
-              book={readerBook}
-              current={currentChapter}
+              book={{ ...readerBook, chapters: safeChapters }}
+              current={safeChapterIndex}
               onSelect={goToChapter}
               bookmarks={bookmarks[readerBook.id] ?? []}
               tone={{ ink: t.ink, sub: t.sub }}
@@ -1066,8 +1199,8 @@ export default function App({
                 </button>
               </div>
               <ChapterList
-                book={readerBook}
-                current={currentChapter}
+                book={{ ...readerBook, chapters: safeChapters }}
+                current={safeChapterIndex}
                 onSelect={goToChapter}
                 bookmarks={bookmarks[readerBook.id] ?? []}
                 tone={{ ink: t.ink, sub: t.sub }}
@@ -1199,28 +1332,119 @@ export default function App({
 
             <div className="w-px h-6 bg-border-secondary hidden sm:block" />
 
-            {/* Avatar / Mon Espace button */}
-            <button
-              type="button"
-              onClick={() => go(sessionUser ? "dashboard" : "login")}
-              title={sessionUser ? `Mon espace (${sessionUser.name || sessionUser.email})` : "Se connecter"}
-              aria-label={sessionUser ? "Ouvrir mon espace" : "Se connecter"}
-              className="relative inline-flex h-9 w-9 shrink-0 items-center justify-center cursor-pointer rounded-corner-full border border-brand-primary/30 bg-surface-hover hover:border-brand-primary hover:shadow-sm transition-all overflow-hidden"
-            >
-              {sessionUser ? (
-                <span className="text-label-sm font-bold text-brand-primary uppercase">
-                  {sessionUser.name?.[0] || sessionUser.email[0] || "U"}
-                </span>
-              ) : (
-                <User className="w-4 h-4 text-text-secondary" aria-hidden="true" />
+            {/* Avatar / Mon Espace button with interactive user menu dropdown */}
+            <div className="relative" id="user-menu-container">
+              <button
+                type="button"
+                onClick={() => {
+                  if (sessionUser) {
+                    setUserMenuOpen((v) => !v)
+                  } else {
+                    go("login")
+                  }
+                }}
+                title={sessionUser ? `Mon compte (${sessionUser.name || sessionUser.email})` : "Se connecter"}
+                aria-label={sessionUser ? "Menu utilisateur" : "Se connecter"}
+                aria-expanded={sessionUser ? userMenuOpen : undefined}
+                aria-haspopup={sessionUser ? "menu" : undefined}
+                className="relative inline-flex h-9 w-9 shrink-0 items-center justify-center cursor-pointer rounded-corner-full border border-brand-primary/30 bg-surface-hover hover:border-brand-primary hover:shadow-sm transition-all overflow-hidden"
+              >
+                {sessionUser ? (
+                  <span className="text-label-sm font-bold text-brand-primary uppercase">
+                    {sessionUser.name?.[0] || sessionUser.email[0] || "U"}
+                  </span>
+                ) : (
+                  <User className="w-4 h-4 text-text-secondary" aria-hidden="true" />
+                )}
+                {sessionUser && (
+                  <span
+                    className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-surface-bg"
+                    aria-hidden="true"
+                  />
+                )}
+              </button>
+
+              {/* Desktop User Dropdown Menu */}
+              {sessionUser && userMenuOpen && (
+                <div
+                  role="menu"
+                  aria-orientation="vertical"
+                  aria-label="Options du compte utilisateur"
+                  className="absolute right-0 top-full mt-2 w-64 rounded-corner-lg bg-surface-bg border border-border-secondary shadow-2xl p-sm flex flex-col gap-xs z-50 animate-rise"
+                >
+                  <div className="px-md py-sm border-b border-border-secondary">
+                    <p className="text-label-sm font-semibold text-text-primary truncate">
+                      {sessionUser.name || "Lecteur"}
+                    </p>
+                    <p className="text-video-title text-text-tertiary truncate">
+                      {sessionUser.email}
+                    </p>
+                    {sessionUser.role && (
+                      <span className="inline-block mt-xs text-[10px] uppercase font-bold tracking-wider px-xs py-0.5 rounded bg-brand-tertiary text-brand-primary">
+                        {sessionUser.role}
+                      </span>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setUserMenuOpen(false)
+                      go("dashboard")
+                    }}
+                    className="w-full flex items-center gap-sm px-md py-sm rounded-corner-md text-label-sm text-text-primary hover:bg-surface-hover transition-colors text-left cursor-pointer"
+                  >
+                    <User className="w-4 h-4 text-brand-primary shrink-0" aria-hidden="true" />
+                    <span>Mon espace lecteur</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setUserMenuOpen(false)
+                      void refreshLibrary()
+                      go("library")
+                    }}
+                    className="w-full flex items-center gap-sm px-md py-sm rounded-corner-md text-label-sm text-text-primary hover:bg-surface-hover transition-colors text-left cursor-pointer"
+                  >
+                    <BookOpen className="w-4 h-4 text-brand-primary shrink-0" aria-hidden="true" />
+                    <span>Ma bibliothèque</span>
+                  </button>
+
+                  {sessionUser?.role && ["admin", "super_admin", "moderator"].includes(sessionUser.role) && (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setUserMenuOpen(false)
+                        go("admin")
+                      }}
+                      className="w-full flex items-center gap-sm px-md py-sm rounded-corner-md text-label-sm text-text-primary hover:bg-surface-hover transition-colors text-left cursor-pointer"
+                    >
+                      <ShieldCheck className="w-4 h-4 text-brand-primary shrink-0" aria-hidden="true" />
+                      <span>Espace administration</span>
+                    </button>
+                  )}
+
+                  <div className="h-px bg-border-secondary my-xs" />
+
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setUserMenuOpen(false)
+                      void handleLogout()
+                    }}
+                    className="w-full flex items-center gap-sm px-md py-sm rounded-corner-md text-label-sm text-red-600 hover:bg-red-50 transition-colors text-left cursor-pointer font-medium"
+                  >
+                    <LogOut className="w-4 h-4 shrink-0" aria-hidden="true" />
+                    <span>Se déconnecter</span>
+                  </button>
+                </div>
               )}
-              {sessionUser && (
-                <span
-                  className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-surface-bg"
-                  aria-hidden="true"
-                />
-              )}
-            </button>
+            </div>
 
             {/* Mobile menu toggle button */}
             <button
@@ -2292,7 +2516,7 @@ export default function App({
                 Vous vous étiez arrêté au{" "}
                 <span className="text-text-primary font-medium">
                   chapitre {resumePrompt.chapter + 1} —{" "}
-                  {resumePrompt.book.chapters[resumePrompt.chapter].title}
+                  {resumePrompt.book.chapters?.[resumePrompt.chapter]?.title || "Chapitre 1"}
                 </span>{" "}
                 de « {resumePrompt.book.title} ».
               </p>
@@ -2414,18 +2638,32 @@ function CheckoutView({
   onRegister: () => void
   onPlaceOrder: (details: CheckoutDetails) => void
 }) {
-  const [form, setForm] = useState({
-    name: user?.name || "",
-    email: user?.email || "",
-    phone: user?.phone || "",
+  const [form, setForm] = useState(() => {
+    let savedPhone = user?.phone || ""
+    if (!savedPhone && typeof window !== "undefined") {
+      try {
+        savedPhone = localStorage.getItem("ybook-user-phone") || ""
+      } catch {}
+    }
+    return {
+      name: user?.name || "",
+      email: user?.email || "",
+      phone: savedPhone,
+    }
   })
 
   useEffect(() => {
     if (user) {
+      let savedPhone = user.phone || ""
+      if (!savedPhone && typeof window !== "undefined") {
+        try {
+          savedPhone = localStorage.getItem("ybook-user-phone") || ""
+        } catch {}
+      }
       setForm((prev) => ({
         name: prev.name || user.name || "",
         email: prev.email || user.email || "",
-        phone: prev.phone || user.phone || "",
+        phone: prev.phone || savedPhone,
       }))
     }
   }, [user])
@@ -2591,7 +2829,14 @@ function CheckoutView({
               label="Numéro de téléphone (pour le Mobile Money)"
               placeholder="+225 07 00 00 00 00"
               value={form.phone}
-              onChange={(v) => setForm((f) => ({ ...f, phone: v }))}
+              onChange={(v) => {
+                setForm((f) => ({ ...f, phone: v }))
+                if (typeof window !== "undefined" && v.trim()) {
+                  try {
+                    localStorage.setItem("ybook-user-phone", v.trim())
+                  } catch {}
+                }
+              }}
             />
           </section>
 

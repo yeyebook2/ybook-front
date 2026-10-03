@@ -1,3 +1,4 @@
+import { extractApiErrorMessage } from "@/lib/api-errors"
 import { getPublicApiBaseUrl } from "@/lib/runtime-env"
 import { mapBackendBook } from "@/features/catalog/catalog.api"
 import type {
@@ -72,10 +73,27 @@ function normalizeDetailBook(payload: BackendBook): BookDetail {
     tags: payload.tags,
     authorSlug: author?.slug ?? payload.author_slug,
     chapters:
-      payload.chapters?.map((chapter, index) => ({
-        title: chapter.title ?? `Chapitre ${index + 1}`,
-        content: chapter.content ?? [],
-      })) ?? [],
+      payload.chapters && payload.chapters.length > 0
+        ? payload.chapters.map((chapter, index) => ({
+            title: chapter.title ?? `Chapitre ${index + 1}`,
+            content: chapter.content ?? [],
+          }))
+        : [
+            {
+              title: `Chapitre 1 — Présentation de ${book.title}`,
+              content: (book.description || "")
+                .split("\n\n")
+                .map((p) => p.trim())
+                .filter(Boolean).length > 0
+                ? (book.description || "")
+                    .split("\n\n")
+                    .map((p) => p.trim())
+                    .filter(Boolean)
+                : [
+                    "Bienvenue dans votre lecture numérique sur YéYéBook. Cet ouvrage est disponible dans votre bibliothèque personnelle.",
+                  ],
+            },
+          ],
   }
 }
 
@@ -89,17 +107,13 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     },
   })
   const payload = (await response.json().catch(() => null)) as T | {
+    detail?: unknown
     message?: string
   } | null
 
   if (!response.ok) {
     throw new Error(
-      payload &&
-        typeof payload === "object" &&
-        "message" in payload &&
-        typeof payload.message === "string"
-        ? payload.message
-        : "Impossible de charger cette fiche livre.",
+      extractApiErrorMessage(payload, "Impossible de charger cette fiche livre."),
     )
   }
 
