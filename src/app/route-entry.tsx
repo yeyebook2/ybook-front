@@ -11,6 +11,7 @@ export function RouteEntry({
 }) {
   return (
     <App
+      key={view}
       initialView={view}
       initialBookSlug={bookSlug}
       initialReaderSlug={readerSlug}

@@ -32,7 +32,9 @@ function requireApiBaseUrl(): string {
 }
 
 async function request<T>(path: string, init: RequestInit): Promise<T> {
-  const response = await fetch(`${requireApiBaseUrl()}${API_PREFIX}${path}`, {
+  const url = `${requireApiBaseUrl()}${API_PREFIX}${path}`
+  console.log(`[YéYéBook Auth API] Requête HTTP ${init.method || "GET"} vers: ${url}`)
+  const response = await fetch(url, {
     ...init,
     credentials: "include",
     headers: {
@@ -47,14 +49,19 @@ async function request<T>(path: string, init: RequestInit): Promise<T> {
   } | null
 
   if (!response.ok) {
-    throw new Error(
-      extractApiErrorMessage(
-        payload,
-        "Une erreur est survenue. Veuillez vérifier vos informations et réessayer.",
-      ),
+    const errorMsg = extractApiErrorMessage(
+      payload,
+      "Une erreur est survenue. Veuillez vérifier vos informations et réessayer.",
     )
+    console.error(`[YéYéBook Auth API] Erreur HTTP ${response.status} sur ${path}:`, {
+      status: response.status,
+      payload,
+      messageExtrait: errorMsg,
+    })
+    throw new Error(errorMsg)
   }
 
+  console.log(`[YéYéBook Auth API] Réponse HTTP ${response.status} OK sur ${path}:`, payload)
   return payload as T
 }
 
@@ -125,6 +132,7 @@ export function saveCachedUser(user: AuthUser | null): void {
 }
 
 export async function login(values: LoginFormValues): Promise<AuthApiResponse> {
+  console.log("[YéYéBook Auth API] login() appelé avec email:", values.email.trim())
   const payload = await request<BackendAuthPayload>("/auth/login", {
     method: "POST",
     body: JSON.stringify({
@@ -132,8 +140,10 @@ export async function login(values: LoginFormValues): Promise<AuthApiResponse> {
       password: values.password,
     }),
   })
+  console.log("[YéYéBook Auth API] login() payload reçu du backend:", payload)
 
   const res = adaptAuthResponse(payload, "Connexion réussie.")
+  console.log("[YéYéBook Auth API] login() réponse adaptée:", res)
   if (res.user) {
     saveCachedUser(res.user)
   }
@@ -143,6 +153,7 @@ export async function login(values: LoginFormValues): Promise<AuthApiResponse> {
 export async function register(
   values: RegisterFormValues,
 ): Promise<AuthApiResponse> {
+  console.log("[YéYéBook Auth API] register() appelé avec email:", values.email.trim())
   const payload = await request<BackendAuthPayload>("/auth/register", {
     method: "POST",
     body: JSON.stringify({
@@ -158,6 +169,7 @@ export async function register(
       },
     }),
   })
+  console.log("[YéYéBook Auth API] register() payload reçu du backend:", payload)
 
   if (typeof window !== "undefined" && values.phone?.trim()) {
     try {
@@ -166,6 +178,7 @@ export async function register(
   }
 
   const res = adaptAuthResponse(payload, "Compte créé avec succès.")
+  console.log("[YéYéBook Auth API] register() réponse adaptée:", res)
   if (res.user) {
     saveCachedUser(res.user)
   }

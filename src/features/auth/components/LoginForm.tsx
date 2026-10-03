@@ -39,17 +39,25 @@ export function LoginForm({
     event.preventDefault()
     const nextErrors = validateLogin(values)
     setErrors(nextErrors)
-    if (hasFieldErrors(nextErrors)) return
+    if (hasFieldErrors(nextErrors)) {
+      console.warn("[YéYéBook LoginForm] Erreurs de validation formulaire:", nextErrors)
+      return
+    }
 
+    console.log("[YéYéBook LoginForm] Début soumission formulaire connexion pour:", values.email.trim())
     setLoading(true)
     try {
       const response = await login(values)
+      console.log("[YéYéBook LoginForm] Réponse reçue de login():", response)
       if (response.ok) {
+        console.log("[YéYéBook LoginForm] Succès, appel de onSuccess avec:", response)
         onSuccess(response)
       } else {
+        console.warn("[YéYéBook LoginForm] Échec auth (response.ok === false):", response.message)
         onError(response.message)
       }
     } catch (error) {
+      console.error("[YéYéBook LoginForm] Exception interceptée lors du login:", error)
       onError(
         error instanceof Error
           ? error.message

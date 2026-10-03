@@ -264,8 +264,24 @@ export default function App({
 
   const showToast = useCallback(
     (message?: string | null, variant: ToastVariant = "default") => {
-      if (!message || typeof message !== "string" || !message.trim()) return
-      setToast({ message: message.trim(), variant })
+      console.log("[YéYéBook Toast] showToast appelé avec:", { message, variant })
+      if (!message || typeof message !== "string" || !message.trim()) {
+        console.warn(
+          "[YéYéBook Toast] showToast ignoré car message vide ou non textuel:",
+          message,
+        )
+        return
+      }
+      const clean = message.trim()
+      setPendingToast({ message: clean, variant })
+      setToast({ message: clean, variant })
+      try {
+        window.dispatchEvent(
+          new CustomEvent("yeyebook:toast", {
+            detail: { message: clean, variant },
+          }),
+        )
+      } catch {}
     },
     [],
   )
@@ -384,13 +400,12 @@ export default function App({
       .catch((reason: unknown) => {
         if (!active) return
         setBooks([])
-        setToast({
-          message:
-            reason instanceof Error
-              ? reason.message
-              : "Impossible de charger les livres de l’accueil.",
-          variant: "error",
-        })
+        showToast(
+          reason instanceof Error
+            ? reason.message
+            : "Impossible de charger les livres de l’accueil.",
+          "error",
+        )
       })
 
     return () => {
@@ -533,8 +548,14 @@ export default function App({
   useEffect(() => {
     if (!toast) return
     const duration =
-      toast.variant === "error" || toast.variant === "warning" ? 6500 : 3200
-    const t = setTimeout(() => setToast(null), duration)
+      toast.variant === "error" || toast.variant === "warning" ? 6500 : 4500
+    const t = setTimeout(() => {
+      console.log(
+        "[YéYéBook Toast] Auto-masquage du toast après délai:",
+        toast.message,
+      )
+      setToast(null)
+    }, duration)
     return () => clearTimeout(t)
   }, [toast])
 
@@ -562,16 +583,38 @@ export default function App({
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "smooth" })
   }, [view, selectedBookId])
+
   useEffect(() => {
     setCartItems(loadCart())
     setCartHydrated(true)
     setProgress(loadProgress(sessionUser?.id))
     setProgressHydrated(true)
+  }, [sessionUser?.id])
+
+  useEffect(() => {
+    const handleGlobalToast = (e: Event) => {
+      const ce = e as CustomEvent<{ message: string; variant?: ToastVariant }>
+      if (ce.detail?.message) {
+        console.log("[YéYéBook Toast] Événement global 'yeyebook:toast' intercepté:", ce.detail)
+        setToast({
+          message: ce.detail.message,
+          variant: ce.detail.variant || "default",
+        })
+      }
+    }
+    window.addEventListener("yeyebook:toast", handleGlobalToast)
+    return () => {
+      window.removeEventListener("yeyebook:toast", handleGlobalToast)
+    }
+  }, [])
+
+  useEffect(() => {
     const pending = consumePendingToast()
     if (pending) {
-      showToast(pending.message, pending.variant)
+      console.log("[YéYéBook Toast] Pending toast consommé (vue ou montage):", pending)
+      setToast(pending)
     }
-  }, [showToast])
+  }, [view])
   useEffect(() => {
     if (!cartHydrated) return
     saveCart(cartItems)
@@ -747,18 +790,15 @@ export default function App({
 
   const placeOrder = async (details: CheckoutDetails) => {
     if (cartItems.length === 0) {
-      setToast({
-        message: "Votre panier est vide.",
-        variant: "warning",
-      })
+      showToast("Votre panier est vide.", "warning")
       return
     }
 
     if (!sessionUser) {
-      setToast({
-        message: "Veuillez vous connecter pour procéder au paiement et retrouver vos livres dans votre bibliothèque.",
-        variant: "warning",
-      })
+      showToast(
+        "Veuillez vous connecter pour procéder au paiement et retrouver vos livres dans votre bibliothèque.",
+        "warning",
+      )
       go("login")
       return
     }
@@ -773,10 +813,7 @@ export default function App({
       )
 
       if (paymentRes.payment?.payment_url) {
-        setToast({
-          message: "Redirection vers la passerelle sécurisée FedaPay...",
-          variant: "success",
-        })
+        showToast("Redirection vers la passerelle sécurisée FedaPay...", "success")
         window.location.href = paymentRes.payment.payment_url
         return
       }
@@ -786,18 +823,14 @@ export default function App({
       )
       setCartItems([])
       setView("confirmation")
-      setToast({
-        message: "Paiement confirmé — bonne lecture !",
-        variant: "success",
-      })
+      showToast("Paiement confirmé — bonne lecture !", "success")
     } catch (err) {
-      setToast({
-        message:
-          err instanceof Error
-            ? err.message
-            : "Erreur lors de l'initialisation du paiement FedaPay.",
-        variant: "error",
-      })
+      showToast(
+        err instanceof Error
+          ? err.message
+          : "Erreur lors de l'initialisation du paiement FedaPay.",
+        "error",
+      )
     } finally {
       setCheckoutLoading(false)
     }
@@ -809,17 +842,14 @@ export default function App({
       if (exists) return prev.map((b) => (b.id === book.id ? book : b))
       return [book, ...prev]
     })
-    setToast({ message: `« ${book.title} » enregistré`, variant: "success" })
+    showToast(`« ${book.title} » enregistré`, "success")
   }
 
   const deleteBook = (id: string) => {
     const book = books.find((b) => b.id === id)
     setBooks((prev) => prev.filter((b) => b.id !== id))
     setCartItems((prev) => prev.filter((item) => item.bookId !== id))
-    setToast({
-      message: `« ${book?.title ?? "Titre"} » supprimé du catalogue`,
-      variant: "warning",
-    })
+    showToast(`« ${book?.title ?? "Titre"} » supprimé du catalogue`, "warning")
   }
 
   const togglePublish = (id: string) => {
@@ -935,7 +965,9 @@ export default function App({
       "default",
     )
   const handleAuthenticated = (response: AuthApiResponse) => {
+    console.log("[YéYéBook Auth] Authentification réussie (handleAuthenticated):", response)
     if (!response.user) {
+      console.error("[YéYéBook Auth] Erreur: response.user manquant:", response)
       showAuthError("La session n’a pas pu être initialisée.")
       return
     }
@@ -945,26 +977,28 @@ export default function App({
       typeof response.message === "string" && response.message.trim().length > 0
         ? response.message.trim()
         : "Connexion réussie."
-    setPendingToast({ message: msg, variant: "success" })
+    console.log("[YéYéBook Auth] Déclenchement du toast de succès:", msg)
+    showToast(msg, "success")
     setView("home")
     router.push("/")
   }
   const handleLogout = async () => {
+    console.log("[YéYéBook Auth] Déconnexion (handleLogout)")
     await logout()
     setSessionUser(null)
     setProgress({})
-    setPendingToast({ message: "Vous êtes déconnecté·e.", variant: "default" })
+    showToast("Vous êtes déconnecté·e.", "default")
     setView("home")
     router.push("/")
   }
   const redirectToLogin = useCallback(() => go("login"), [go])
   const redirectUnauthorized = useCallback(() => {
-    setToast({
-      message: "Vous n’avez pas les permissions pour accéder à cet espace.",
-      variant: "error",
-    })
+    showToast(
+      "Vous n’avez pas les permissions pour accéder à cet espace.",
+      "error",
+    )
     go("home")
-  }, [go])
+  }, [go, showToast])
   const protectedViews: View[] = ["library", "reader", "admin"]
 
   if (protectedViews.includes(view) && (!sessionChecked || !sessionUser)) {
@@ -1054,7 +1088,7 @@ export default function App({
               onLogout={() => void handleLogout()}
               onOpenBook={openBook}
               onAddToCart={addDashboardBookToCart}
-              onToast={(message, variant = "default") => setToast({ message, variant })}
+              onToast={(message, variant = "default") => showToast(message, variant)}
             />
             {toast && (
               <Toast
@@ -1107,7 +1141,7 @@ export default function App({
             <h1 className="text-heading font-semibold text-text-primary mb-sm">
               Chargement de votre e-book...
             </h1>
-            <p className="text-label-sm text-text-secondary max-w-md">
+            <p className="text-label-sm text-text-secondary max-w-[480px]">
               Préparation du texte numérique et de votre confort de lecture.
             </p>
           </div>
@@ -1120,7 +1154,7 @@ export default function App({
             <h1 className="text-heading font-semibold text-text-primary mb-sm">
               Impossible d'ouvrir ce livre
             </h1>
-            <p className="text-label-sm text-text-secondary max-w-md mb-xl">
+            <p className="text-label-sm text-text-secondary max-w-[480px] mb-xl">
               {readerError}
             </p>
             <div className="flex flex-wrap gap-md justify-center">
@@ -1147,7 +1181,7 @@ export default function App({
           <h1 className="text-heading font-semibold text-text-primary mb-sm">
             Chargement de votre lecture...
           </h1>
-          <p className="text-label-sm text-text-secondary max-w-md mb-xl">
+          <p className="text-label-sm text-text-secondary max-w-[480px] mb-xl">
             Veuillez patienter pendant l'accès au texte numérique de votre e-book.
           </p>
           <div className="flex flex-wrap gap-md justify-center">
@@ -1936,10 +1970,10 @@ export default function App({
                       onClick={() => {
                         if (featured) openBook(featured.id)
                         else
-                          setToast({
-                            message: "Aucun livre à la une n’est disponible.",
-                            variant: "error",
-                          })
+                          showToast(
+                            "Aucun livre à la une n’est disponible.",
+                            "error",
+                          )
                       }}
                       className="inline-flex items-center gap-sm px-xl py-md rounded-corner-md bg-white/10 border border-white/45 text-white font-semibold hover:bg-white/20 transition-colors cursor-pointer"
                     >
@@ -2202,7 +2236,7 @@ export default function App({
             onSearchChange={setSearchQuery}
             onOpenBook={(book) => openBook(book)}
             onAddToCart={(book) => addToCart(book)}
-            onError={(message) => setToast({ message, variant: "error" })}
+            onError={(message) => showToast(message, "error")}
           />
         )}
 
@@ -2516,10 +2550,7 @@ export default function App({
                           <td className="px-lg py-md text-right">
                             <button
                               onClick={() =>
-                                setToast({
-                                  message: `Facture ${o.id} générée`,
-                                  variant: "success",
-                                })
+                                showToast(`Facture ${o.id} générée`, "success")
                               }
                               className="text-brand-primary hover:underline cursor-pointer"
                             >
@@ -2626,10 +2657,10 @@ export default function App({
               className="flex gap-sm"
               onSubmit={(e) => {
                 e.preventDefault()
-                setToast({
-                  message: "Merci ! Vous êtes inscrit·e à la newsletter.",
-                  variant: "success",
-                })
+                showToast(
+                  "Merci ! Vous êtes inscrit·e à la newsletter.",
+                  "success",
+                )
               }}
             >
               <input

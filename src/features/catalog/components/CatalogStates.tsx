@@ -43,7 +43,7 @@ export function CatalogErrorState({
         <h2 className="text-heading text-text-primary">
           Le catalogue n’est pas disponible
         </h2>
-        <p className="max-w-md text-label-sm leading-relaxed text-text-secondary">
+        <p className="max-w-[480px] text-label-sm leading-relaxed text-text-secondary">
           {message}
         </p>
       </div>
@@ -73,7 +73,7 @@ export function CatalogNoResultsState({
         <h2 className="text-heading text-text-primary">
           {hasActiveFilters ? "Aucun résultat" : "Le catalogue est vide"}
         </h2>
-        <p className="max-w-md text-label-sm leading-relaxed text-text-secondary">
+        <p className="max-w-[480px] text-label-sm leading-relaxed text-text-secondary">
           {hasActiveFilters
             ? "Essayez de retirer un filtre ou de rechercher un autre mot-clé."
             : "Les livres seront bientôt disponibles dans le catalogue YéYéBook."}

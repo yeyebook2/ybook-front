@@ -42,17 +42,25 @@ export function RegisterForm({ onSuccess, onError }: RegisterFormProps) {
     event.preventDefault()
     const nextErrors = validateRegister(values)
     setErrors(nextErrors)
-    if (hasFieldErrors(nextErrors)) return
+    if (hasFieldErrors(nextErrors)) {
+      console.warn("[YéYéBook RegisterForm] Erreurs de validation formulaire:", nextErrors)
+      return
+    }
 
+    console.log("[YéYéBook RegisterForm] Début soumission formulaire inscription pour:", values.email.trim())
     setLoading(true)
     try {
       const response = await register(values)
+      console.log("[YéYéBook RegisterForm] Réponse reçue de register():", response)
       if (response.ok) {
+        console.log("[YéYéBook RegisterForm] Succès, appel de onSuccess avec:", response)
         onSuccess(response)
       } else {
+        console.warn("[YéYéBook RegisterForm] Échec inscription (response.ok === false):", response.message)
         onError(response.message)
       }
     } catch (error) {
+      console.error("[YéYéBook RegisterForm] Exception interceptée lors de l'inscription:", error)
       onError(
         error instanceof Error
           ? error.message
