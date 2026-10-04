@@ -132,6 +132,7 @@ import {
   User,
   Loader2,
   AlertCircle,
+  CheckCircle2,
   ChevronDown,
 } from "lucide-react"
 
@@ -244,7 +245,22 @@ export default function App({
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [checkoutLoading, setCheckoutLoading] = useState(false)
 
-  const [libGrid, setLibGrid] = useState(true)
+  const [libGrid, setLibGrid] = useState<boolean>(() => {
+    if (typeof window === "undefined") return true
+    try {
+      const saved = localStorage.getItem("yeyebook-library-view-mode")
+      if (saved === "list") return false
+      if (saved === "grid") return true
+    } catch {}
+    return true
+  })
+
+  const setLibraryViewMode = useCallback((isGrid: boolean) => {
+    setLibGrid(isGrid)
+    try {
+      localStorage.setItem("yeyebook-library-view-mode", isGrid ? "grid" : "list")
+    } catch {}
+  }, [])
   const [readerTheme, setReaderTheme] = useState<"light" | "sepia" | "dark">(
     "light",
   )
@@ -2335,7 +2351,7 @@ export default function App({
                   aria-label="Affichage"
                 >
                   <button
-                    onClick={() => setLibGrid(true)}
+                    onClick={() => setLibraryViewMode(true)}
                     aria-pressed={libGrid}
                     className={`p-sm cursor-pointer ${
                       libGrid
@@ -2347,7 +2363,7 @@ export default function App({
                     <LayoutGrid className="w-4 h-4" aria-hidden="true" />
                   </button>
                   <button
-                    onClick={() => setLibGrid(false)}
+                    onClick={() => setLibraryViewMode(false)}
                     aria-pressed={!libGrid}
                     className={`p-sm cursor-pointer ${
                       !libGrid
@@ -2423,22 +2439,21 @@ export default function App({
                   Découvrir le catalogue
                 </Button>
               </div>
-            ) : (
-              <div
-                className={
-                  libGrid
-                    ? "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2xl"
-                    : "grid grid-cols-1 sm:grid-cols-2 gap-2xl"
-                }
-              >
+            ) : libGrid ? (
+              /* Vue Grille (Cartes verticales) */
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2xl">
                 {libraryBooks.map((book) => {
                   const saved = progress[book.id]
+                  const totalChapters = Math.max(1, book.chapters?.length || 1)
                   const started = saved !== undefined && saved > 0
+                  const completed =
+                    totalChapters <= 1
+                      ? started
+                      : saved !== undefined && saved >= totalChapters - 1
                   const pct = started
-                    ? Math.round(
-                        ((saved + 1) /
-                          Math.max(1, book.chapters?.length || 1)) *
-                          100,
+                    ? Math.min(
+                        100,
+                        Math.round(((saved + 1) / totalChapters) * 100),
                       )
                     : 0
                   return (
@@ -2463,9 +2478,14 @@ export default function App({
                             Lire
                           </span>
                         </div>
-                        {started && (
+                        {started && !completed && (
                           <span className="absolute top-md left-md text-[11px] font-semibold text-on-brand bg-brand-primary rounded-corner-full px-sm py-0.5">
                             {pct}%
+                          </span>
+                        )}
+                        {completed && (
+                          <span className="absolute top-md left-md text-[11px] font-semibold text-white bg-[#2e8b57] rounded-corner-full px-sm py-0.5">
+                            Terminé
                           </span>
                         )}
                       </button>
@@ -2483,15 +2503,17 @@ export default function App({
                           aria-hidden="true"
                         >
                           <div
-                            className="h-full bg-brand-primary"
-                            style={{ width: `${pct}%` }}
+                            className={`h-full ${completed ? "bg-[#2e8b57]" : "bg-brand-primary"}`}
+                            style={{ width: `${completed ? 100 : pct}%` }}
                           />
                         </div>
                       )}
                       <Button
-                        variant={started ? "neutral" : "primary"}
+                        variant={completed ? "neutral" : started ? "neutral" : "primary"}
                         iconStart={
-                          started ? (
+                          completed ? (
+                            <RotateCcw className="w-4 h-4" />
+                          ) : started ? (
                             <RotateCcw className="w-4 h-4" />
                           ) : (
                             <BookText className="w-4 h-4" />
@@ -2499,8 +2521,152 @@ export default function App({
                         }
                         onClick={() => startReading(book.id, book.slug)}
                       >
-                        {started ? "Reprendre" : "Commencer la lecture"}
+                        {completed
+                          ? "Relire"
+                          : started
+                            ? "Reprendre"
+                            : "Commencer la lecture"}
                       </Button>
+                    </div>
+                  )
+                })}
+              </div>
+            ) : (
+              /* Vue Liste (Lignes horizontales complètes) */
+              <div className="flex flex-col gap-md">
+                {libraryBooks.map((book) => {
+                  const saved = progress[book.id]
+                  const totalChapters = Math.max(1, book.chapters?.length || 1)
+                  const started = saved !== undefined && saved > 0
+                  const completed =
+                    totalChapters <= 1
+                      ? started
+                      : saved !== undefined && saved >= totalChapters - 1
+                  const pct = started
+                    ? Math.min(
+                        100,
+                        Math.round(((saved + 1) / totalChapters) * 100),
+                      )
+                    : 0
+                  return (
+                    <div
+                      key={book.id}
+                      className="flex flex-col sm:flex-row sm:items-center justify-between gap-lg p-lg rounded-corner-lg border border-border-secondary bg-surface-bg hover:border-brand-primary/40 transition-all shadow-xs"
+                    >
+                      <div className="flex items-center gap-lg min-w-0 flex-1">
+                        <button
+                          type="button"
+                          onClick={() => startReading(book.id, book.slug)}
+                          aria-label={`Lire « ${book.title} »`}
+                          className="relative w-16 sm:w-20 aspect-[2/3] shrink-0 rounded-corner-md overflow-hidden border border-border-secondary bg-brand-tertiary shadow-xs group cursor-pointer"
+                        >
+                          <img
+                            src={book.cover}
+                            alt=""
+                            onError={handleCoverError}
+                            className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                          />
+                          <div className="absolute inset-0 bg-[#100908]/0 group-hover:bg-[#100908]/30 transition-colors flex items-center justify-center">
+                            <BookText
+                              className="w-4 h-4 text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                              aria-hidden="true"
+                            />
+                          </div>
+                          {started && !completed && (
+                            <span className="absolute bottom-1 right-1 text-[10px] font-bold text-on-brand bg-brand-primary rounded-corner-full px-1.5 py-0.5 leading-none shadow-xs">
+                              {pct}%
+                            </span>
+                          )}
+                          {completed && (
+                            <span className="absolute bottom-1 right-1 text-[10px] font-bold text-white bg-[#2e8b57] rounded-corner-full px-1.5 py-0.5 leading-none shadow-xs">
+                              ✓
+                            </span>
+                          )}
+                        </button>
+
+                        <div className="flex flex-col gap-xs min-w-0 flex-1">
+                          <div className="flex items-center gap-sm flex-wrap">
+                            {book.category && (
+                              <span className="text-[11px] font-semibold px-sm py-0.5 rounded-corner-full bg-[#100908]/5 text-brand-dark border border-border-secondary">
+                                {book.category}
+                              </span>
+                            )}
+                            {completed ? (
+                              <span className="inline-flex items-center gap-1 text-[11px] font-medium text-[#1b5e20] bg-[#edf7ee] px-sm py-0.5 rounded-corner-full">
+                                <CheckCircle2 className="w-3 h-3 text-[#2e8b57]" aria-hidden="true" />
+                                Terminé
+                              </span>
+                            ) : started ? (
+                              <span className="text-[11px] font-medium text-brand-primary bg-brand-tertiary px-sm py-0.5 rounded-corner-full">
+                                En cours ({pct}%)
+                              </span>
+                            ) : (
+                              <span className="text-[11px] font-medium text-text-tertiary bg-surface-secondary-bg px-sm py-0.5 rounded-corner-full">
+                                Non commencé
+                              </span>
+                            )}
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => openBook(book)}
+                            className="text-left font-semibold text-text-primary hover:text-brand-primary transition-colors text-label sm:text-heading truncate cursor-pointer"
+                          >
+                            {book.title}
+                          </button>
+
+                          <p className="text-label-sm text-text-secondary truncate">
+                            {book.author}
+                            {book.chapters?.length ? ` · ${book.chapters.length} chapitres` : ""}
+                          </p>
+
+                          {started && (
+                            <div className="mt-xs max-w-xs flex items-center gap-sm">
+                              <div
+                                className="h-1.5 flex-1 rounded-corner-full bg-brand-tertiary overflow-hidden"
+                                aria-hidden="true"
+                              >
+                                <div
+                                  className={`h-full ${completed ? "bg-[#2e8b57]" : "bg-brand-primary"}`}
+                                  style={{ width: `${completed ? 100 : pct}%` }}
+                                />
+                              </div>
+                              <span className="text-[11px] text-text-tertiary shrink-0">
+                                {completed ? "100%" : `${pct}%`}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-sm shrink-0 self-stretch sm:self-center justify-end border-t sm:border-t-0 pt-sm sm:pt-0 border-border-secondary/60">
+                        <Button
+                          variant={completed ? "neutral" : started ? "neutral" : "primary"}
+                          iconStart={
+                            completed ? (
+                              <RotateCcw className="w-4 h-4" />
+                            ) : started ? (
+                              <RotateCcw className="w-4 h-4" />
+                            ) : (
+                              <BookText className="w-4 h-4" />
+                            )
+                          }
+                          onClick={() => startReading(book.id, book.slug)}
+                        >
+                          {completed
+                            ? "Relire"
+                            : started
+                              ? "Reprendre"
+                              : "Commencer la lecture"}
+                        </Button>
+                        <Button
+                          variant="subtle"
+                          onClick={() => openBook(book)}
+                          aria-label={`Détails de « ${book.title} »`}
+                        >
+                          Détails
+                        </Button>
+                      </div>
                     </div>
                   )
                 })}
