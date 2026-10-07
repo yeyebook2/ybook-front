@@ -42,6 +42,8 @@ export type ConfirmPaymentResponse = {
   order_status: string
 }
 
+import { createApiHeaders } from "@/lib/api-headers"
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const url = `${API_BASE_URL}${API_PREFIX}${path}`
   let response: Response
@@ -49,10 +51,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     response = await fetch(url, {
       ...init,
       credentials: "include",
-      headers: {
-        "Content-Type": "application/json",
-        ...init.headers,
-      },
+      headers: createApiHeaders(init.headers),
     })
   } catch (networkErr) {
     const error = handleNetworkOrFetchError(

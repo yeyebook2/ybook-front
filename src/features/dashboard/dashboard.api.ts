@@ -1,4 +1,5 @@
 import { handleNetworkOrFetchError, parseApiError } from "@/lib/api-errors"
+import { createApiHeaders } from "@/lib/api-headers"
 import { getPublicApiBaseUrl } from "@/lib/runtime-env"
 import type { AuthUser } from "@/features/auth/types"
 
@@ -42,7 +43,7 @@ async function request<T>(path: string): Promise<T> {
   try {
     response = await fetch(`${API_BASE_URL}${API_PREFIX}${path}`, {
       credentials: "include",
-      headers: { "Content-Type": "application/json" },
+      headers: createApiHeaders(),
     })
   } catch (networkErr) {
     throw handleNetworkOrFetchError(

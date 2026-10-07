@@ -32,6 +32,8 @@ type BackendAuthPayload = {
   code?: string
 }
 
+import { createApiHeaders } from "@/lib/api-headers"
+
 function requireApiBaseUrl(): string {
   if (!API_BASE_URL) throw new Error("L’URL de l’API n’est pas configurée.")
   return API_BASE_URL
@@ -45,10 +47,7 @@ async function request<T>(path: string, init: RequestInit): Promise<T> {
     response = await fetch(url, {
       ...init,
       credentials: "include",
-      headers: {
-        "Content-Type": "application/json",
-        ...init.headers,
-      },
+      headers: createApiHeaders(init.headers),
     })
   } catch (networkErr) {
     const error = handleNetworkOrFetchError(

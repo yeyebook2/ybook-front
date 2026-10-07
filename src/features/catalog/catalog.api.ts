@@ -1,4 +1,5 @@
 import { handleNetworkOrFetchError, parseApiError } from "@/lib/api-errors"
+import { createApiHeaders } from "@/lib/api-headers"
 import { CATALOG_CATEGORIES, CATALOG_LANGUAGES } from "./catalog.constants"
 import { getPublicApiBaseUrl } from "@/lib/runtime-env"
 import type {
@@ -93,7 +94,7 @@ async function requestCatalog(
   try {
     response = await fetch(`${API_BASE_URL}${API_PREFIX}/books?${params}`, {
       credentials: "include",
-      headers: { "Content-Type": "application/json" },
+      headers: createApiHeaders(),
     })
   } catch (networkErr) {
     throw handleNetworkOrFetchError(

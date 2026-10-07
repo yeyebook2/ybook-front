@@ -1,4 +1,5 @@
-import { extractApiErrorMessage } from "@/lib/api-errors"
+import { handleNetworkOrFetchError, parseApiError } from "@/lib/api-errors"
+import { createApiHeaders } from "@/lib/api-headers"
 import { getPublicApiBaseUrl } from "@/lib/runtime-env"
 import { mapBackendBook } from "@/features/catalog/catalog.api"
 import type {
@@ -98,23 +99,27 @@ function normalizeDetailBook(payload: BackendBook): BookDetail {
 }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${API_PREFIX}${path}`, {
-    ...init,
-    credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      ...init.headers,
-    },
-  })
+  let response: Response
+  try {
+    response = await fetch(`${API_BASE_URL}${API_PREFIX}${path}`, {
+      ...init,
+      credentials: "include",
+      headers: createApiHeaders(init.headers),
+    })
+  } catch (networkErr) {
+    throw handleNetworkOrFetchError(
+      networkErr,
+      "Impossible de charger cette fiche livre. Vérifiez votre connexion internet.",
+    )
+  }
+
   const payload = (await response.json().catch(() => null)) as T | {
     detail?: unknown
     message?: string
   } | null
 
   if (!response.ok) {
-    throw new Error(
-      extractApiErrorMessage(payload, "Impossible de charger cette fiche livre."),
-    )
+    throw parseApiError(payload, response.status, response.headers, "Impossible de charger cette fiche livre.")
   }
 
   return payload as T

@@ -10,6 +10,8 @@ import type {
   AdminStats,
 } from "./types"
 
+import { createApiHeaders } from "@/lib/api-headers"
+
 const API_BASE_URL = getPublicApiBaseUrl()
 const API_PREFIX = "/api/v1/admin"
 
@@ -20,11 +22,10 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     response = await fetch(url, {
       ...init,
       credentials: "include",
-      headers: {
-        "Content-Type": "application/json",
+      headers: createApiHeaders({
         "Cache-Control": "no-cache",
         ...init.headers,
-      },
+      }),
     })
   } catch (networkErr) {
     throw handleNetworkOrFetchError(
