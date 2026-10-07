@@ -1,5 +1,6 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 
+import { ApiError } from "@/lib/api-errors"
 import { AuthSubmitButton } from "./AuthSubmitButton"
 import { FormField } from "./FormField"
 import { PasswordField } from "./PasswordField"
@@ -26,6 +27,16 @@ export function LoginForm({
   const [values, setValues] = useState<LoginFormValues>(initialValues)
   const [errors, setErrors] = useState<FieldErrors<LoginFormValues>>({})
   const [loading, setLoading] = useState(false)
+  const [cooldownSeconds, setCooldownSeconds] = useState<number>(0)
+
+  // Gestion du compte à rebours en cas de limitation (429 AUTH_RATE_LIMITED)
+  useEffect(() => {
+    if (cooldownSeconds <= 0) return
+    const timer = setInterval(() => {
+      setCooldownSeconds((prev) => (prev > 1 ? prev - 1 : 0))
+    }, 1000)
+    return () => clearInterval(timer)
+  }, [cooldownSeconds])
 
   const updateField = <K extends keyof LoginFormValues,>(
     field: K,
@@ -37,6 +48,8 @@ export function LoginForm({
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (cooldownSeconds > 0) return
+
     const nextErrors = validateLogin(values)
     setErrors(nextErrors)
     if (hasFieldErrors(nextErrors)) {
@@ -58,14 +71,35 @@ export function LoginForm({
       }
     } catch (error) {
       console.error("[YéYéBook LoginForm] Exception interceptée lors du login:", error)
-      onError(
-        error instanceof Error
-          ? error.message
-          : "Impossible de se connecter pour le moment.",
-      )
+      if (error instanceof ApiError) {
+        // Détection de la limitation de tentatives (429 AUTH_RATE_LIMITED)
+        if (
+          (error.code === "AUTH_RATE_LIMITED" || error.status === 429) &&
+          error.retryAfter &&
+          error.retryAfter > 0
+        ) {
+          setCooldownSeconds(error.retryAfter)
+        }
+        onError(error.message)
+      } else {
+        onError(
+          error instanceof Error
+            ? error.message
+            : "Impossible de se connecter pour le moment.",
+        )
+      }
     } finally {
       setLoading(false)
     }
+  }
+
+  const formatCooldown = (seconds: number): string => {
+    const mins = Math.floor(seconds / 60)
+    const secs = seconds % 60
+    if (mins > 0) {
+      return `Réessayez dans ${mins}m ${secs < 10 ? "0" : ""}${secs}s`
+    }
+    return `Réessayez dans ${secs}s`
   }
 
   return (
@@ -103,7 +137,9 @@ export function LoginForm({
         </button>
       </div>
 
-      <AuthSubmitButton loading={loading}>Se connecter</AuthSubmitButton>
+      <AuthSubmitButton loading={loading} disabled={cooldownSeconds > 0}>
+        {cooldownSeconds > 0 ? formatCooldown(cooldownSeconds) : "Se connecter"}
+      </AuthSubmitButton>
     </form>
   )
 }

@@ -4,6 +4,7 @@ export {
   login,
   register,
   getCurrentUser,
+  refreshSession,
   logout,
   getCachedUser,
   saveCachedUser,

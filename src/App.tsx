@@ -58,7 +58,18 @@ import {
 } from "@figma/astraui"
 import { SearchInput } from "@/components/ui/SearchInput"
 import { Toast, type ToastVariant } from "@/components/ui/Toast"
+import { ApiError } from "@/lib/api-errors"
 import { createOrderApi, initiatePaymentApi } from "@/features/checkout/checkout.api"
+import {
+  createAdminBookApi,
+  deleteAdminBookApi,
+  getAdminBooksApi,
+  getAdminOrdersApi,
+  getAdminStatsApi,
+  toggleBookPublishApi,
+  updateAdminBookApi,
+  updateOrderStatusApi,
+} from "@/features/admin"
 const ybookSymbol = "/brand/ybook-symbol-primary.png"
 const faviconPng = "/brand/ybook-favicon-180.png"
 import { Wordmark } from "@/components/brand/Wordmark"
@@ -142,7 +153,7 @@ type ToastState = {
   variant?: ToastVariant
 } | null
 type Progress = Record<string, number>
-type OrderStatus = "paid" | "pending" | "refunded"
+type OrderStatus = "paid" | "pending" | "refunded" | "cancelled"
 type Order = {
   id: string
   customer: string
@@ -822,11 +833,30 @@ export default function App({
     setCheckoutLoading(true)
     try {
       const bookIds = cartItems.map((item) => item.bookId)
-      const orderRes = await createOrderApi(bookIds)
-      const paymentRes = await initiatePaymentApi(
-        orderRes.order.id,
-        details.phone,
-      )
+      let orderRes = await createOrderApi(bookIds)
+      let paymentRes: Awaited<ReturnType<typeof initiatePaymentApi>>
+      try {
+        paymentRes = await initiatePaymentApi(
+          orderRes.order.id,
+          details.phone,
+        )
+      } catch (paymentErr) {
+        if (
+          paymentErr instanceof ApiError &&
+          (paymentErr.code === "ORDER_EXPIRED" || paymentErr.status === 410)
+        ) {
+          console.warn(
+            "[YéYéBook] Commande expirée (ORDER_EXPIRED). Recréation automatique et relance du paiement...",
+          )
+          orderRes = await createOrderApi(bookIds)
+          paymentRes = await initiatePaymentApi(
+            orderRes.order.id,
+            details.phone,
+          )
+        } else {
+          throw paymentErr
+        }
+      }
 
       if (paymentRes.payment?.payment_url) {
         showToast("Redirection vers la passerelle sécurisée FedaPay...", "success")
@@ -841,6 +871,7 @@ export default function App({
       setView("confirmation")
       showToast("Paiement confirmé — bonne lecture !", "success")
     } catch (err) {
+      console.error("[YéYéBook Checkout] Erreur lors de la commande ou du paiement:", err)
       showToast(
         err instanceof Error
           ? err.message
@@ -852,37 +883,96 @@ export default function App({
     }
   }
 
-  const saveBook = (book: Book) => {
+  const saveBook = async (book: Book) => {
+    const exists = books.some((b) => b.id === book.id)
     setBooks((prev) => {
-      const exists = prev.some((b) => b.id === book.id)
-      if (exists) return prev.map((b) => (b.id === book.id ? book : b))
+      const ex = prev.some((b) => b.id === book.id)
+      if (ex) return prev.map((b) => (b.id === book.id ? book : b))
       return [book, ...prev]
     })
     showToast(`« ${book.title} » enregistré`, "success")
+
+    try {
+      if (exists) {
+        await updateAdminBookApi(book.id, {
+          title: book.title,
+          author: book.author,
+          category: book.category,
+          price: book.price,
+          pages: book.pages,
+          year: book.year,
+          cover: book.cover,
+          description: book.description,
+          status: book.published ? "published" : "draft",
+        })
+      } else {
+        await createAdminBookApi({
+          title: book.title,
+          author: book.author,
+          category: book.category,
+          price: book.price,
+          pages: book.pages,
+          year: book.year,
+          cover: book.cover,
+          description: book.description,
+          status: book.published ? "published" : "draft",
+        })
+      }
+    } catch (err) {
+      console.warn("[Admin API] Synchronisation sauvegarde livre:", err)
+    }
   }
 
-  const deleteBook = (id: string) => {
+  const deleteBook = async (id: string) => {
     const book = books.find((b) => b.id === id)
     setBooks((prev) => prev.filter((b) => b.id !== id))
     setCartItems((prev) => prev.filter((item) => item.bookId !== id))
     showToast(`« ${book?.title ?? "Titre"} » supprimé du catalogue`, "warning")
+
+    try {
+      await deleteAdminBookApi(id)
+    } catch (err) {
+      console.warn("[Admin API] Synchronisation suppression livre:", err)
+    }
   }
 
-  const togglePublish = (id: string) => {
+  const togglePublish = async (id: string) => {
+    const book = books.find((b) => b.id === id)
+    const nextPublished = !(book?.published !== false)
     setBooks((prev) =>
       prev.map((b) =>
         b.id === id
           ? {
               ...b,
-              published: b.published === false,
+              published: nextPublished,
             }
           : b,
       ),
     )
+    showToast(
+      `« ${book?.title ?? "Titre"} » ${nextPublished ? "publié" : "passé en brouillon"}`,
+      "default",
+    )
+
+    try {
+      await toggleBookPublishApi(id, nextPublished ? "published" : "draft")
+    } catch (err) {
+      console.warn("[Admin API] Synchronisation statut publication:", err)
+    }
   }
 
-  const setOrderStatus = (id: string, status: OrderStatus) => {
+  const setOrderStatus = async (id: string, status: OrderStatus) => {
     setOrders((prev) => prev.map((o) => (o.id === id ? { ...o, status } : o)))
+    showToast(
+      `Commande ${id} passée à « ${ORDER_STATUS[status]?.label ?? status} »`,
+      "default",
+    )
+
+    try {
+      await updateOrderStatusApi(id, status)
+    } catch (err) {
+      console.warn("[Admin API] Synchronisation statut commande:", err)
+    }
   }
   const startReading = (bookId: string, slug?: string) => {
     const book =
@@ -3504,6 +3594,10 @@ const ORDER_STATUS: Record<OrderStatus, OrderStatusMeta> = {
     label: "Remboursée",
     className: "bg-[#c13f4e]/10 text-[#9c2d3a]",
   },
+  cancelled: {
+    label: "Expirée / Annulée",
+    className: "bg-surface-secondary-bg text-text-tertiary border border-border-secondary",
+  },
 }
 
 function StatusPill({ status }: { status: OrderStatus }) {
@@ -3543,6 +3637,18 @@ function AdminView({
   const [creating, setCreating] = useState(false)
   const [catalogQuery, setCatalogQuery] = useState("")
   const [orderFilter, setOrderFilter] = useState<"all" | OrderStatus>("all")
+
+  useEffect(() => {
+    let active = true
+    void getAdminStatsApi().then((stats) => {
+      if (active && stats) {
+        console.log("[YéYéBook Admin] Statistiques de vente synchronisées:", stats)
+      }
+    })
+    return () => {
+      active = false
+    }
+  }, [])
 
   const catalogBooks = useMemo(() => {
     const q = catalogQuery.trim().toLowerCase()
@@ -4138,6 +4244,7 @@ function AdminView({
                   { id: "all", label: "Toutes" },
                   { id: "paid", label: "Payées" },
                   { id: "pending", label: "En attente" },
+                  { id: "cancelled", label: "Expirées / Annulées" },
                   { id: "refunded", label: "Remboursées" },
                 ] as const).map((f) => {
                   const active = orderFilter === f.id
@@ -4260,6 +4367,7 @@ function AdminView({
                                 >
                                   <option value="paid">Payée</option>
                                   <option value="pending">En attente</option>
+                                  <option value="cancelled">Expirée / Annulée</option>
                                   <option value="refunded">Remboursée</option>
                                 </select>
                               </div>

@@ -1,4 +1,4 @@
-import { extractApiErrorMessage } from "@/lib/api-errors"
+import { handleNetworkOrFetchError, parseApiError } from "@/lib/api-errors"
 import { getPublicApiBaseUrl } from "@/lib/runtime-env"
 import type { AuthUser } from "@/features/auth/types"
 
@@ -38,10 +38,18 @@ type CollectionResponse<T,> = {
 }
 
 async function request<T>(path: string): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${API_PREFIX}${path}`, {
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-  })
+  let response: Response
+  try {
+    response = await fetch(`${API_BASE_URL}${API_PREFIX}${path}`, {
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+    })
+  } catch (networkErr) {
+    throw handleNetworkOrFetchError(
+      networkErr,
+      "Impossible de charger votre espace lecteur. Vérifiez votre connexion internet.",
+    )
+  }
 
   const payload = (await response.json().catch(() => null)) as T | {
     detail?: unknown
@@ -49,9 +57,7 @@ async function request<T>(path: string): Promise<T> {
   } | null
 
   if (!response.ok) {
-    throw new Error(
-      extractApiErrorMessage(payload, "Impossible de charger votre espace lecteur."),
-    )
+    throw parseApiError(payload, response.status, response.headers, "Impossible de charger votre espace lecteur.")
   }
 
   return payload as T

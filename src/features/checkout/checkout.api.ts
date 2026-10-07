@@ -1,4 +1,8 @@
-import { extractApiErrorMessage } from "@/lib/api-errors"
+import {
+  ApiError,
+  handleNetworkOrFetchError,
+  parseApiError,
+} from "@/lib/api-errors"
 import { getPublicApiBaseUrl } from "@/lib/runtime-env"
 
 const API_BASE_URL = getPublicApiBaseUrl()
@@ -40,31 +44,49 @@ export type ConfirmPaymentResponse = {
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const url = `${API_BASE_URL}${API_PREFIX}${path}`
-  const response = await fetch(url, {
-    ...init,
-    credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      ...init.headers,
-    },
-  })
+  let response: Response
+  try {
+    response = await fetch(url, {
+      ...init,
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+        ...init.headers,
+      },
+    })
+  } catch (networkErr) {
+    const error = handleNetworkOrFetchError(
+      networkErr,
+      "Impossible d'initier la commande ou le paiement. Vérifiez votre connexion internet.",
+    )
+    console.error(`[YéYéBook Checkout API] Erreur réseau sur ${path}:`, error)
+    throw error
+  }
 
   const payload = (await response.json().catch(() => null)) as T | {
     detail?: string | { message?: string }
     message?: string
+    code?: string
+    success?: boolean
   } | null
 
   if (!response.ok) {
-    throw new Error(
-      extractApiErrorMessage(
-        payload,
-        "Une erreur est survenue lors de l'opération de commande ou de paiement.",
-      ),
+    const apiError = parseApiError(
+      payload,
+      response.status,
+      response.headers,
+      "Une erreur est survenue lors de l'opération de commande ou de paiement.",
     )
+    console.error(`[YéYéBook Checkout API] Erreur HTTP ${response.status} sur ${path}:`, {
+      code: apiError.code,
+      status: apiError.status,
+      message: apiError.message,
+    })
+    throw apiError
   }
 
   if (!payload) {
-    throw new Error("Réponse vide du serveur.")
+    throw new ApiError("Réponse vide du serveur.")
   }
 
   return payload as T

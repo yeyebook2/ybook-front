@@ -1,4 +1,4 @@
-import { extractApiErrorMessage } from "@/lib/api-errors"
+import { handleNetworkOrFetchError, parseApiError } from "@/lib/api-errors"
 import { CATALOG_CATEGORIES, CATALOG_LANGUAGES } from "./catalog.constants"
 import { getPublicApiBaseUrl } from "@/lib/runtime-env"
 import type {
@@ -89,18 +89,25 @@ async function requestCatalog(
   params.set("sort_by", filters.sortBy)
   params.set("sort_order", filters.sortOrder)
 
-  const response = await fetch(`${API_BASE_URL}${API_PREFIX}/books?${params}`, {
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-  })
+  let response: Response
+  try {
+    response = await fetch(`${API_BASE_URL}${API_PREFIX}/books?${params}`, {
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+    })
+  } catch (networkErr) {
+    throw handleNetworkOrFetchError(
+      networkErr,
+      "Impossible de charger le catalogue de livres. Vérifiez votre connexion internet.",
+    )
+  }
+
   const payload = (await response
     .json()
     .catch(() => null)) as BackendCatalogResponse | { detail?: unknown; message?: string } | null
 
   if (!response.ok) {
-    throw new Error(
-      extractApiErrorMessage(payload, "Impossible de charger le catalogue de livres."),
-    )
+    throw parseApiError(payload, response.status, response.headers, "Impossible de charger le catalogue de livres.")
   }
 
   const data = payload as BackendCatalogResponse
