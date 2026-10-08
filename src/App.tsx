@@ -48,6 +48,7 @@ import {
   useMemo,
   useEffect,
   useCallback,
+  useRef,
   type ReactNode,
 } from "react"
 import {
@@ -145,6 +146,8 @@ import {
   AlertCircle,
   CheckCircle2,
   ChevronDown,
+  UploadCloud,
+  Image as ImageIcon,
 } from "lucide-react"
 
 export type View = "home" | "catalog" | "details" | "checkout" | "confirmation" | "library" | "reader" | "admin" | "login" | "register" | "dashboard"
@@ -4426,6 +4429,65 @@ function BookForm({
   })
   const set = (k: keyof typeof form, v: string) =>
     setForm((f) => ({ ...f, [k]: v }))
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [isDragging, setIsDragging] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  const [useUrlMode, setUseUrlMode] = useState(false)
+
+  const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5 Mo
+  const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"]
+
+  const handleFile = (file: File) => {
+    setUploadError(null)
+    if (!ALLOWED_TYPES.includes(file.type)) {
+      setUploadError("Format non supporté. Veuillez choisir une image JPG, PNG ou WEBP.")
+      return
+    }
+    if (file.size > MAX_FILE_SIZE) {
+      setUploadError("Le fichier est trop lourd (5 Mo maximum).")
+      return
+    }
+
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      const result = e.target?.result as string
+      if (result) {
+        set("cover", result)
+      }
+    }
+    reader.onerror = () => {
+      setUploadError("Erreur lors de la lecture du fichier.")
+    }
+    reader.readAsDataURL(file)
+  }
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(true)
+  }
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(false)
+  }
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(false)
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      handleFile(e.dataTransfer.files[0])
+    }
+  }
+
+  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      handleFile(e.target.files[0])
+    }
+  }
+
   const categories = CATALOG_CATEGORIES.map(({ value }) => value)
   const valid =
     form.title.trim() && form.author.trim() && Number(form.price) > 0
@@ -4550,12 +4612,135 @@ function BookForm({
             />
           </div>
 
-          <InputField
-            label="Image de couverture (URL)"
-            placeholder="https://…"
-            value={form.cover}
-            onChange={(v) => set("cover", v)}
-          />
+          {/* Couverture du livre : Drag & Drop depuis le PC ou URL */}
+          <div className="flex flex-col gap-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-label-sm font-medium text-text-primary">
+                Couverture du livre
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setUseUrlMode(!useUrlMode)
+                  setUploadError(null)
+                }}
+                className="text-video-title font-medium text-brand-primary hover:underline cursor-pointer"
+              >
+                {useUrlMode ? "Glisser-déposer un fichier" : "Saisir une URL web"}
+              </button>
+            </div>
+
+            {useUrlMode ? (
+              <InputField
+                label=""
+                placeholder="https://… (URL directe de l'image)"
+                value={form.cover}
+                onChange={(v) => {
+                  setUploadError(null)
+                  set("cover", v)
+                }}
+              />
+            ) : (
+              <div>
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  accept="image/jpeg,image/png,image/webp"
+                  className="hidden"
+                  onChange={handleFileInputChange}
+                />
+
+                {form.cover ? (
+                  <div className="flex items-center gap-lg p-md rounded-corner-lg border border-border-secondary bg-surface-secondary-bg/60">
+                    <div className="w-16 h-24 rounded-corner-sm overflow-hidden bg-brand-tertiary border border-border-secondary shrink-0 shadow-sm">
+                      <img
+                        src={form.cover}
+                        alt="Aperçu couverture"
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          e.currentTarget.src = ""
+                          setUploadError("Impossible de charger l'image.")
+                        }}
+                      />
+                    </div>
+                    <div className="flex-1 min-w-0 flex flex-col justify-between py-xs">
+                      <div>
+                        <p className="text-label-sm font-semibold text-text-primary flex items-center gap-xs">
+                          <Check className="w-4 h-4 text-emerald-600" />
+                          Couverture prête
+                        </p>
+                        <p className="text-video-title text-text-tertiary mt-0.5">
+                          Format portrait e-book
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-md mt-sm">
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          className="text-label-sm text-brand-primary font-medium hover:underline cursor-pointer"
+                        >
+                          Changer le fichier
+                        </button>
+                        <span className="text-border-secondary">·</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            set("cover", "")
+                            if (fileInputRef.current) fileInputRef.current.value = ""
+                          }}
+                          className="text-label-sm text-danger hover:underline cursor-pointer flex items-center gap-xs"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          Supprimer
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div
+                    onDragOver={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    onDrop={handleDrop}
+                    onClick={() => fileInputRef.current?.click()}
+                    className={`border-2 border-dashed rounded-corner-lg p-xl flex flex-col items-center justify-center gap-xs text-center cursor-pointer transition-all ${
+                      isDragging
+                        ? "border-brand-primary bg-brand-primary/10 scale-[1.01]"
+                        : "border-border-primary bg-surface-secondary-bg/40 hover:bg-surface-secondary-bg hover:border-brand-primary"
+                    }`}
+                    role="button"
+                    tabIndex={0}
+                    aria-label="Déposer une image de couverture ou cliquer pour parcourir"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault()
+                        fileInputRef.current?.click()
+                      }
+                    }}
+                  >
+                    <div className="w-10 h-10 rounded-corner-full bg-brand-tertiary text-brand-primary flex items-center justify-center mb-xs">
+                      <UploadCloud className="w-5 h-5" />
+                    </div>
+                    <p className="text-label-sm font-semibold text-text-primary">
+                      Glissez-déposez la couverture ici
+                    </p>
+                    <p className="text-video-title text-text-secondary">
+                      ou <span className="text-brand-primary underline">parcourez vos fichiers</span>
+                    </p>
+                    <p className="text-[11px] text-text-tertiary mt-xs">
+                      JPG, PNG ou WEBP · 5 Mo max · Ratio 2:3 recommandé
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {uploadError && (
+              <p className="text-video-title text-danger flex items-center gap-xs mt-0.5">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                {uploadError}
+              </p>
+            )}
+          </div>
 
           <div className="flex flex-col gap-sm">
             <label
