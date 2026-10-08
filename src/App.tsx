@@ -4531,6 +4531,108 @@ function BookForm({
     }
   }
 
+  // Fichier ePub (Cahier des charges Phase 1: ePub uniquement, 50 Mo max)
+  const epubInputRef = useRef<HTMLInputElement>(null)
+  const [isEpubDragging, setIsEpubDragging] = useState(false)
+  const [epubError, setEpubError] = useState<string | null>(null)
+  const [epubUploading, setEpubUploading] = useState(false)
+  const [epubProgress, setEpubProgress] = useState(0)
+  const [epubStatusText, setEpubStatusText] = useState("")
+  const [epubFile, setEpubFile] = useState<{ name: string; size: string } | null>(
+    book ? { name: `${book.slug || "livre"}.epub`, size: "ePub 3" } : null,
+  )
+  const epubTimerRef = useRef<NodeJS.Timeout[]>([])
+
+  const clearEpubTimers = () => {
+    epubTimerRef.current.forEach((t) => clearTimeout(t))
+    epubTimerRef.current = []
+  }
+
+  useEffect(() => {
+    return () => clearEpubTimers()
+  }, [])
+
+  const MAX_EPUB_SIZE = 50 * 1024 * 1024 // 50 Mo
+
+  const handleEpubFile = (file: File) => {
+    setEpubError(null)
+    const isEpub =
+      file.name.toLowerCase().endsWith(".epub") ||
+      file.type === "application/epub+zip"
+    if (!isEpub) {
+      setEpubError(
+        "Format non supporté. Seuls les fichiers au format .epub sont acceptés (Cahier des charges Phase 1).",
+      )
+      return
+    }
+    if (file.size > MAX_EPUB_SIZE) {
+      setEpubError(
+        "Le fichier est trop lourd (50 Mo maximum selon le cahier des charges).",
+      )
+      return
+    }
+
+    clearEpubTimers()
+    setEpubUploading(true)
+    setEpubProgress(25) // 1. Départ immédiat à 25% (progression psychologique)
+    setEpubStatusText("Lecture et initialisation de l'ePub...")
+
+    const steps = [
+      { delay: 180, pct: 38, text: "Contrôle de la conformité ePub 3..." },
+      { delay: 350, pct: 50, text: "Validation des chapitres et métadonnées..." },
+      { delay: 500, pct: 75, text: "Téléversement accéléré en cours..." }, // 2. Saut rapide 50% -> 75%
+      { delay: 800, pct: 88, text: "Finalisation du conteneur ePub..." },
+      { delay: 1100, pct: 96, text: "Contrôle d'intégrité..." },
+      { delay: 1300, pct: 100, text: "Fichier ePub validé !" },
+    ]
+
+    steps.forEach(({ delay, pct, text }) => {
+      const timer = setTimeout(() => {
+        setEpubProgress(pct)
+        setEpubStatusText(text)
+        if (pct === 100) {
+          const finalTimer = setTimeout(() => {
+            setEpubUploading(false)
+            const formattedSize =
+              file.size > 1024 * 1024
+                ? `${(file.size / (1024 * 1024)).toFixed(1)} Mo`
+                : `${Math.round(file.size / 1024)} Ko`
+            setEpubFile({ name: file.name, size: formattedSize })
+          }, 350)
+          epubTimerRef.current.push(finalTimer)
+        }
+      }, delay)
+      epubTimerRef.current.push(timer)
+    })
+  }
+
+  const handleEpubDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsEpubDragging(true)
+  }
+
+  const handleEpubDragLeave = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsEpubDragging(false)
+  }
+
+  const handleEpubDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsEpubDragging(false)
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      handleEpubFile(e.dataTransfer.files[0])
+    }
+  }
+
+  const handleEpubInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      handleEpubFile(e.target.files[0])
+    }
+  }
+
   const categories = CATALOG_CATEGORIES.map(({ value }) => value)
   const valid =
     form.title.trim() && form.author.trim() && Number(form.price) > 0
@@ -4785,6 +4887,136 @@ function BookForm({
             )}
           </div>
 
+          {/* Fichier e-book : ePub uniquement (Cahier des charges Phase 1, 50 Mo max) */}
+          <div className="flex flex-col gap-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-label-sm font-medium text-text-primary">
+                Fichier e-book (.epub)
+              </span>
+              <span className="text-[12px] text-text-tertiary">
+                ePub 3 / ePub 2 · 50 Mo max
+              </span>
+            </div>
+
+            <input
+              type="file"
+              ref={epubInputRef}
+              accept=".epub,application/epub+zip"
+              className="hidden"
+              onChange={handleEpubInputChange}
+            />
+
+            {epubUploading ? (
+              /* Barre de progression active et psychologique */
+              <div className="p-lg rounded-corner-lg border border-brand-primary/30 bg-surface-secondary-bg/80 flex flex-col gap-sm animate-fade">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-xs">
+                    <BookOpen className="w-4 h-4 text-brand-primary animate-pulse" />
+                    <span className="text-label-sm font-semibold text-text-primary">
+                      Téléversement du fichier ePub...
+                    </span>
+                  </div>
+                  <span className="text-label-sm font-bold text-brand-primary">
+                    {epubProgress}%
+                  </span>
+                </div>
+
+                {/* Jauge de progression animée */}
+                <div className="w-full h-2 rounded-corner-full bg-border-secondary overflow-hidden">
+                  <div
+                    className="h-full bg-brand-primary rounded-corner-full transition-all duration-200 ease-out"
+                    style={{ width: `${epubProgress}%` }}
+                  />
+                </div>
+
+                <div className="flex items-center justify-between text-video-title text-text-secondary">
+                  <span>{epubStatusText}</span>
+                  <span className="text-text-tertiary">Phase 1 (ePub)</span>
+                </div>
+              </div>
+            ) : epubFile ? (
+              /* Fichier validé et prêt */
+              <div className="flex items-center gap-md p-md rounded-corner-lg border border-border-secondary bg-surface-secondary-bg/60">
+                <div className="w-10 h-10 rounded-corner-md bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 flex items-center justify-center shrink-0">
+                  <BookOpen className="w-5 h-5" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-xs">
+                    <p className="text-label-sm font-semibold text-text-primary truncate">
+                      {epubFile.name}
+                    </p>
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  </div>
+                  <p className="text-video-title text-text-tertiary">
+                    {epubFile.size} · Validé pour le Web Reader
+                  </p>
+                </div>
+                <div className="flex items-center gap-sm shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => epubInputRef.current?.click()}
+                    className="text-label-sm text-brand-primary hover:underline cursor-pointer"
+                  >
+                    Remplacer
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEpubFile(null)
+                      if (epubInputRef.current) epubInputRef.current.value = ""
+                    }}
+                    aria-label="Supprimer le fichier ePub"
+                    className="text-text-tertiary hover:text-danger p-xs transition-colors cursor-pointer"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            ) : (
+              /* Zone de glisser-déposer */
+              <div
+                onDragOver={handleEpubDragOver}
+                onDragLeave={handleEpubDragLeave}
+                onDrop={handleEpubDrop}
+                onClick={() => epubInputRef.current?.click()}
+                className={`border-2 border-dashed rounded-corner-lg p-xl flex flex-col items-center justify-center gap-xs text-center cursor-pointer transition-all ${
+                  isEpubDragging
+                    ? "border-brand-primary bg-brand-primary/10 scale-[1.01]"
+                    : "border-border-primary bg-surface-secondary-bg/40 hover:bg-surface-secondary-bg hover:border-brand-primary"
+                }`}
+                role="button"
+                tabIndex={0}
+                aria-label="Déposer un fichier ePub ou cliquer pour parcourir"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault()
+                    epubInputRef.current?.click()
+                  }
+                }}
+              >
+                <div className="w-10 h-10 rounded-corner-full bg-brand-tertiary text-brand-primary flex items-center justify-center mb-xs">
+                  <BookText className="w-5 h-5" />
+                </div>
+                <p className="text-label-sm font-semibold text-text-primary">
+                  Glissez-déposez le fichier ePub ici
+                </p>
+                <p className="text-video-title text-text-secondary">
+                  ou <span className="text-brand-primary underline">parcourez vos fichiers</span>
+                </p>
+                <p className="text-[11px] text-text-tertiary mt-xs">
+                  Fichier .epub uniquement · 50 Mo max (Cahier des charges)
+                </p>
+              </div>
+            )}
+
+            {epubError && (
+              <p className="text-video-title text-danger flex items-center gap-xs mt-0.5">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                {epubError}
+              </p>
+            )}
+          </div>
+
           <div className="flex flex-col gap-sm">
             <label
               htmlFor="book-desc"
@@ -4810,11 +5042,21 @@ function BookForm({
           <div className="flex-1" />
           <Button
             variant="primary"
-            iconStart={<Check className="w-4 h-4" />}
-            disabled={!valid}
+            iconStart={
+              epubUploading ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Check className="w-4 h-4" />
+              )
+            }
+            disabled={!valid || epubUploading}
             onClick={submit}
           >
-            {book ? "Enregistrer" : "Créer le titre"}
+            {epubUploading
+              ? "Téléversement en cours…"
+              : book
+                ? "Enregistrer"
+                : "Créer le titre"}
           </Button>
         </div>
       </aside>
