@@ -23,6 +23,7 @@ export type AuthUser = {
   email: string
   phone?: string
   role?: "user" | "author" | "moderator" | "admin" | "super_admin"
+  is_admin?: boolean
 }
 
 export type AuthApiResponse = {

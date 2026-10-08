@@ -684,7 +684,7 @@ export default function App({
         library: "/library",
         login: "/login",
         register: "/register",
-        admin: "/admin",
+        admin: "/yeye-admin-admin",
       }
       const route = routes[next]
       if (route) router.push(route)
@@ -1088,8 +1088,18 @@ export default function App({
         : "Connexion réussie."
     console.log("[YéYéBook Auth] Déclenchement du toast de succès:", msg)
     showToast(msg, "success")
-    setView("home")
-    router.push("/")
+    const isAdmin = Boolean(
+      response.user.is_admin ||
+        (response.user.role &&
+          ["admin", "super_admin", "moderator"].includes(response.user.role)),
+    )
+    if (isAdmin) {
+      setView("admin")
+      router.push("/yeye-admin-admin")
+    } else {
+      setView("home")
+      router.push("/")
+    }
   }
   const handleLogout = async () => {
     console.log("[YéYéBook Auth] Déconnexion (handleLogout)")
@@ -1108,7 +1118,7 @@ export default function App({
     )
     go("home")
   }, [go, showToast])
-  const protectedViews: View[] = ["library", "reader", "admin"]
+  const protectedViews: View[] = ["library", "reader"]
 
   if (protectedViews.includes(view) && (!sessionChecked || !sessionUser)) {
     return (
@@ -1213,32 +1223,65 @@ export default function App({
   }
 
   if (view === "admin") {
+    const isAdmin = Boolean(
+      sessionUser &&
+        (sessionUser.is_admin ||
+          (sessionUser.role &&
+            ["admin", "super_admin", "moderator"].includes(sessionUser.role))),
+    )
+
+    if (!sessionChecked) {
+      return (
+        <main className="flex min-h-screen items-center justify-center bg-surface-secondary-bg px-xl text-text-secondary">
+          <Loader2 className="w-6 h-6 animate-spin text-brand-primary" aria-label="Chargement..." />
+        </main>
+      )
+    }
+
+    if (!isAdmin) {
+      return (
+        <main className="flex min-h-screen flex-col items-center justify-center bg-surface-bg px-xl py-4xl text-center">
+          <div className="max-w-[480px] flex flex-col items-center gap-lg animate-fade">
+            <span className="text-[72px] sm:text-[96px] font-serif font-bold text-brand-primary leading-none select-none">
+              404
+            </span>
+            <div className="flex flex-col gap-sm">
+              <h1 className="text-display-sm sm:text-display font-serif font-bold text-text-primary">
+                Page introuvable
+              </h1>
+              <p className="text-body text-text-secondary leading-relaxed">
+                La page que vous recherchez n'existe pas ou a été déplacée.
+              </p>
+            </div>
+            <div className="pt-md">
+              <Button variant="primary" onClick={() => go("home")}>
+                Retour à l'accueil
+              </Button>
+            </div>
+          </div>
+        </main>
+      )
+    }
+
     return (
-      <RoleGuard
-        user={sessionUser}
-        checking={!sessionChecked}
-        allowedRoles={["admin", "super_admin", "moderator"]}
-        onUnauthorized={redirectUnauthorized}
-      >
-        <>
-          <AdminView
-            books={books}
-            orders={orders}
-            onSaveBook={saveBook}
-            onDeleteBook={deleteBook}
-            onTogglePublish={togglePublish}
-            onSetOrderStatus={setOrderStatus}
-            onExit={() => go("home")}
+      <>
+        <AdminView
+          books={books}
+          orders={orders}
+          onSaveBook={saveBook}
+          onDeleteBook={deleteBook}
+          onTogglePublish={togglePublish}
+          onSetOrderStatus={setOrderStatus}
+          onExit={() => go("home")}
+        />
+        {toast && (
+          <Toast
+            message={toast.message}
+            variant={toast.variant}
+            onDismiss={() => setToast(null)}
           />
-          {toast && (
-            <Toast
-              message={toast.message}
-              variant={toast.variant}
-              onDismiss={() => setToast(null)}
-            />
-          )}
-        </>
-      </RoleGuard>
+        )}
+      </>
     )
   }
   if (view === "reader") {
@@ -1880,7 +1923,7 @@ export default function App({
                     <span>Ma bibliothèque</span>
                   </button>
 
-                  {sessionUser?.role && ["admin", "super_admin", "moderator"].includes(sessionUser.role) && (
+                  {(sessionUser?.is_admin || (sessionUser?.role && ["admin", "super_admin", "moderator"].includes(sessionUser.role))) && (
                     <button
                       type="button"
                       role="menuitem"
@@ -2897,7 +2940,7 @@ export default function App({
                   </button>
                 </li>
               ))}
-              {sessionUser?.role && ["admin", "super_admin", "moderator"].includes(sessionUser.role) && (
+              {(sessionUser?.is_admin || (sessionUser?.role && ["admin", "super_admin", "moderator"].includes(sessionUser.role))) && (
                 <li>
                   <button
                     onClick={() => go("admin")}
