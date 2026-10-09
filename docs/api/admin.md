@@ -35,6 +35,8 @@
   - `403` : `FORBIDDEN` / `ADMIN_REQUIRED` (Rôle admin requis)
   - `404` : `NOT_FOUND` / `BOOK_NOT_FOUND` / `ORDER_NOT_FOUND`
   - `410` : `ORDER_EXPIRED` (Commande de plus de 60 min non payée)
+  - `413` : `PAYLOAD_TOO_LARGE` / `FILE_TOO_LARGE` (Fichier supérieur à 50 Mo pour ePub ou 5 Mo pour image)
+  - `415` : `UNSUPPORTED_MEDIA_TYPE` (Format invalide, ex: fichier non ePub)
   - `422` : Validation Pydantic
   - `429` : `AUTH_RATE_LIMITED` (avec header `Retry-After: <secondes>`)
   - `503` : `SERVICE_UNAVAILABLE` (Base de données momentanément indisponible, avec header `Retry-After: <secondes>`)
@@ -159,11 +161,9 @@ GET /api/v1/admin/books?page=1&limit=20&search=amadou&status=all
 
 ### 4.2 Création d'un livre : `POST /api/v1/admin/books`
 
-> **Note sur le champ `cover`** :
-> Le formulaire admin propose désormais un système de **glisser-déposer (Drag & Drop)** de fichiers depuis le PC (JPG, PNG, WEBP, max 5 Mo) ainsi que la saisie d'URL web.
-> Le champ `cover` peut donc contenir :
-> 1. Une URL HTTP(S) absolue (ex. `https://storage.yeyebook.com/covers/...`)
-> 2. Une chaîne d'image Base64 encodée (Data URL : `data:image/jpeg;base64,...`) issue du dépôt direct depuis le PC. Le backend peut la persister telle quelle ou la convertir et la téléverser sur Cloudflare R2 / AWS S3.
+> **Note sur le champ `cover` et le fichier ePub** :
+> 1. **Couverture (`cover`)** : Le formulaire admin propose un système de **glisser-déposer (Drag & Drop)** de fichiers image (JPG, PNG, WEBP, max 5 Mo) ou saisie d'URL. Le champ `cover` accepte une URL HTTP(S) ou une chaîne Base64 (`data:image/jpeg;base64,...`).
+> 2. **Fichier ePub (`file_url` / `epub_filename`)** : Le formulaire intègre également une zone d'upload dédiée aux fichiers `.epub` (max 50 Mo). Après téléversement (ou encodage), `file_url` référence l'ePub sécurisé et `epub_filename` conserve le nom d'origine.
 
 ```http
 POST /api/v1/admin/books
@@ -178,7 +178,9 @@ Content-Type: application/json
   "price": 3000,
   "pages": 165,
   "year": 1979,
-  "cover": "https://...",
+  "cover": "https://storage.yeyebook.com/covers/une-si-longue-lettre.jpg",
+  "file_url": "https://storage.yeyebook.com/books/c7a8b321/une-si-longue-lettre.epub",
+  "epub_filename": "une-si-longue-lettre.epub",
   "description": "Roman épistolaire majeur de la littérature sénégalaise.",
   "status": "published"
 }
@@ -223,7 +225,8 @@ Content-Type: application/json
   "price": 3500,
   "pages": 168,
   "year": 1979,
-  "cover": "https://...",
+  "cover": "https://storage.yeyebook.com/covers/une-si-longue-lettre.jpg",
+  "file_url": "https://storage.yeyebook.com/books/c7a8b321/une-si-longue-lettre.epub",
   "description": "Nouvelle édition annotée.",
   "status": "published"
 }
@@ -317,6 +320,58 @@ Content-Type: multipart/form-data
   "height": 1200
 }
 ```
+
+---
+
+### 4.7 Téléversement de fichier ePub : `POST /api/v1/admin/books/upload-epub`
+
+Conformément aux sections **4.2.3, 4.7.1 et 4.7.4 du Cahier des charges** (« Upload fichier ePub, validation format, max 50Mo »), cet endpoint permet de réceptionner le fichier binaire `.epub` du livre et de le stocker de façon sécurisée (ex. sur bucket Cloudflare R2 / AWS S3 sous `/books/{book_id}/book.epub` avec ACL privée).
+
+```http
+POST /api/v1/admin/books/upload-epub
+Content-Type: multipart/form-data
+```
+
+**Champs formulaire** :
+- `file` : Fichier binaire ePub strictement au format `.epub` (`application/epub+zip`), taille maximale **50 Mo**.
+
+**Contraintes de validation backend requises** :
+1. **Format MIME strict** : Doit être `application/epub+zip` (ou extension `.epub`). Tout autre format (PDF, DOCX, etc.) doit être rejeté avec une erreur **`415 Unsupported Media Type`** ou **`422 Unprocessable Entity`**.
+2. **Taille maximale** : Maximum 50 Mo. Si le fichier dépasse cette limite, le serveur doit renvoyer une erreur **`413 Payload Too Large`**.
+3. **Contrôle d'intégrité (recommandé)** : Validation de la structure ePub via `epubcheck` avant finalisation du stockage.
+
+#### Réponse de succès (200 OK ou 201 Created) :
+```json
+{
+  "success": true,
+  "message": "Fichier ePub téléversé avec succès.",
+  "file_url": "https://storage.yeyebook.com/books/c7a8b321-4f1e/book.epub",
+  "filename": "une-si-longue-lettre.epub",
+  "size_bytes": 14258900
+}
+```
+
+#### Réponses d'erreur spécifiques :
+- **Fichier trop volumineux (413 Payload Too Large)** :
+```json
+{
+  "success": false,
+  "code": "PAYLOAD_TOO_LARGE",
+  "message": "Le fichier ePub dépasse la taille maximale autorisée de 50 Mo."
+}
+```
+- **Format non supporté (415 Unsupported Media Type)** :
+```json
+{
+  "success": false,
+  "code": "UNSUPPORTED_MEDIA_TYPE",
+  "message": "Seuls les fichiers au format ePub (.epub) sont acceptés."
+}
+```
+
+> **Note sur l'expérience utilisateur et la vitesse perçue (Perceived Speed Loader)** :
+> Côté frontend, l'upload est équipé d'une barre de progression optimiste à paliers dynamiques (saut immédiat à 25%, progression vers 50%, surge rapide à 75%, finalisation fluide à 100% avec icône de validation verte et détails du fichier).
+> Ce comportement est géré **100% côté client** afin de maintenir l'attention de l'administrateur : le backend FastAPI n'a besoin d'aucun protocole particulier (WebSocket/SSE), il traite la requête `multipart/form-data` de manière standard.
 
 ---
 
