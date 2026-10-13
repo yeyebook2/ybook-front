@@ -70,6 +70,8 @@ import {
   toggleBookPublishApi,
   updateAdminBookApi,
   updateOrderStatusApi,
+  uploadCoverApi,
+  uploadEpubApi,
 } from "@/features/admin"
 const ybookSymbol = "/brand/ybook-symbol-primary.png"
 const faviconPng = "/brand/ybook-favicon-180.png"
@@ -102,6 +104,7 @@ import {
 } from "@/features/catalog/catalog.constants"
 import { BookDetailPage } from "@/features/book-details"
 import { getBookDetail } from "@/features/book-details/book-details.api"
+import { EpubWebReader } from "@/features/reader"
 import { formatPrice, handleCoverError } from "@/features/catalog/catalog.utils"
 import { BookCard } from "@/features/catalog/components/BookCard"
 import { RatingStars } from "@/features/catalog/components/RatingStars"
@@ -148,6 +151,7 @@ import {
   ChevronDown,
   UploadCloud,
   Image as ImageIcon,
+  Info,
 } from "lucide-react"
 
 export type View = "home" | "catalog" | "details" | "checkout" | "confirmation" | "library" | "reader" | "admin" | "login" | "register" | "dashboard"
@@ -239,12 +243,8 @@ export default function App({
   const [readerError, setReaderError] = useState<string | null>(null)
   const [purchasedBooks, setPurchasedBooks] = useState<Book[]>([])
 
-  const [sessionUser, setSessionUser] = useState<AuthUser | null>(() =>
-    getCachedUser(),
-  )
-  const [sessionChecked, setSessionChecked] = useState(
-    () => typeof window !== "undefined" && Boolean(getCachedUser()),
-  )
+  const [sessionUser, setSessionUser] = useState<AuthUser | null>(null)
+  const [sessionChecked, setSessionChecked] = useState(false)
   const [books, setBooks] = useState<Book[]>([])
   const [orders, setOrders] = useState<Order[]>([])
   const [selectedBookId, setSelectedBookId] = useState<string | null>(null)
@@ -259,15 +259,7 @@ export default function App({
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [checkoutLoading, setCheckoutLoading] = useState(false)
 
-  const [libGrid, setLibGrid] = useState<boolean>(() => {
-    if (typeof window === "undefined") return true
-    try {
-      const saved = localStorage.getItem("yeyebook-library-view-mode")
-      if (saved === "list") return false
-      if (saved === "grid") return true
-    } catch {}
-    return true
-  })
+  const [libGrid, setLibGrid] = useState<boolean>(true)
 
   const setLibraryViewMode = useCallback((isGrid: boolean) => {
     setLibGrid(isGrid)
@@ -441,6 +433,19 @@ export default function App({
     return () => {
       active = false
     }
+  }, [])
+
+  useEffect(() => {
+    const cached = getCachedUser()
+    if (cached) {
+      setSessionUser(cached)
+      setSessionChecked(true)
+    }
+    try {
+      const saved = localStorage.getItem("yeyebook-library-view-mode")
+      if (saved === "list") setLibGrid(false)
+      if (saved === "grid") setLibGrid(true)
+    } catch {}
   }, [])
 
   useEffect(() => {
@@ -905,11 +910,13 @@ export default function App({
           pages: book.pages,
           year: book.year,
           cover: book.cover,
+          file_url: book.file_url,
+          epub_filename: book.epub_filename,
           description: book.description,
           status: book.published ? "published" : "draft",
         })
       } else {
-        await createAdminBookApi({
+        const res = await createAdminBookApi({
           title: book.title,
           author: book.author,
           category: book.category,
@@ -917,9 +924,16 @@ export default function App({
           pages: book.pages,
           year: book.year,
           cover: book.cover,
+          file_url: book.file_url,
+          epub_filename: book.epub_filename,
           description: book.description,
           status: book.published ? "published" : "draft",
         })
+        if (res?.book?.id) {
+          setBooks((prev) =>
+            prev.map((b) => (b.id === book.id ? { ...b, id: res.book!.id } : b)),
+          )
+        }
       }
     } catch (err) {
       console.warn("[Admin API] Synchronisation sauvegarde livre:", err)
@@ -1355,374 +1369,13 @@ export default function App({
       )
     }
 
-    const safeChapters =
-      readerBook.chapters && readerBook.chapters.length > 0
-        ? readerBook.chapters
-        : [
-            {
-              title: `Présentation & Extrait — ${readerBook.title}`,
-              content:
-                (readerBook.description || "")
-                  .split("\n\n")
-                  .map((p) => p.trim())
-                  .filter(Boolean).length > 0
-                  ? (readerBook.description || "")
-                      .split("\n\n")
-                      .map((p) => p.trim())
-                      .filter(Boolean)
-                  : [
-                      `Bienvenue dans votre lecture numérique de « ${readerBook.title} » par ${readerBook.author}.`,
-                      "Cet e-book est enregistré dans votre bibliothèque personnelle.",
-                      "Profitez de votre espace de lecture en ligne sur YéYéBook.",
-                    ],
-            },
-          ]
-    const total = Math.max(1, safeChapters.length)
-    const safeChapterIndex = Math.max(0, Math.min(currentChapter, total - 1))
-    const chapter = safeChapters[safeChapterIndex] || safeChapters[0]
-    const pct = Math.round(((safeChapterIndex + 1) / total) * 100)
-    const themes = {
-      light: {
-        page: "#fff6eb",
-        ink: "#100908",
-        sub: "#6b615c",
-        rule: "#c1b5ac66",
-        panel: "#fffdf9",
-      },
-      sepia: {
-        page: "#f6ecd6",
-        ink: "#432d16",
-        sub: "#8a7048",
-        rule: "#432d1622",
-        panel: "#efe2c6",
-      },
-      dark: {
-        page: "#171015",
-        ink: "#ece2e6",
-        sub: "#9a8890",
-        rule: "#ffffff1a",
-        panel: "#241820",
-      },
-    } as const
-    const t = themes[readerTheme]
-    const bookmarked = (bookmarks[readerBook.id] ?? []).includes(safeChapterIndex)
-    const toggleBookmark = () =>
-      setBookmarks((prev) => {
-        const list = prev[readerBook.id] ?? []
-        const next = list.includes(safeChapterIndex)
-          ? list.filter((c) => c !== safeChapterIndex)
-          : [...list, safeChapterIndex]
-        return { ...prev, [readerBook.id]: next }
-      })
-
     return (
-      <div
-        className="min-h-screen flex flex-col"
-        style={{ backgroundColor: t.page }}
-      >
-        {}
-        <header className="sticky top-0 z-40 bg-[#1a0f0c] text-white">
-          <div className="max-w-[1280px] mx-auto px-lg md:px-2xl h-[60px] flex items-center gap-lg">
-            <button
-              onClick={() => go("library")}
-              className="inline-flex items-center gap-sm text-label-sm font-medium text-white/85 hover:text-white transition-colors cursor-pointer"
-            >
-              <ChevronLeft className="w-4 h-4" aria-hidden="true" />{" "}
-              Bibliothèque
-            </button>
-            <div className="min-w-0 flex-1 text-center">
-              <p className="text-label-sm font-semibold text-white truncate">
-                {readerBook.title}
-              </p>
-              <p className="text-video-title text-white/55 truncate">
-                {readerBook.author}
-              </p>
-            </div>
-            <div className="flex items-center gap-xs">
-              <button
-                onClick={toggleBookmark}
-                aria-pressed={bookmarked}
-                aria-label={
-                  bookmarked ? "Retirer le signet" : "Ajouter un signet"
-                }
-                className="inline-flex items-center justify-center w-9 h-9 rounded-corner-full text-white/85 hover:bg-white/10 transition-colors cursor-pointer"
-              >
-                <Bookmark
-                  className={`w-[18px] h-[18px] ${
-                    bookmarked ? "fill-current text-brand-secondary" : ""
-                  }`}
-                  aria-hidden="true"
-                />
-              </button>
-              <button
-                onClick={() => setSettingsOpen((v) => !v)}
-                aria-pressed={settingsOpen}
-                aria-label="Réglages de lecture"
-                className={`inline-flex items-center justify-center w-9 h-9 rounded-corner-full transition-colors cursor-pointer ${
-                  settingsOpen
-                    ? "bg-white/15 text-white"
-                    : "text-white/85 hover:bg-white/10"
-                }`}
-              >
-                <Settings className="w-[18px] h-[18px]" aria-hidden="true" />
-              </button>
-              <button
-                onClick={() => setChapterListOpen(true)}
-                className="lg:hidden inline-flex items-center justify-center w-9 h-9 rounded-corner-full text-white/85 hover:bg-white/10 transition-colors cursor-pointer"
-                aria-label="Ouvrir la liste des chapitres"
-              >
-                <List className="w-[18px] h-[18px]" aria-hidden="true" />
-              </button>
-            </div>
-          </div>
-
-          {}
-          {settingsOpen && (
-            <div className="absolute right-2 md:right-6 top-[64px] w-[300px] max-w-[calc(100vw-16px)] rounded-corner-lg border border-border-secondary bg-surface-bg text-text-primary shadow-2xl p-xl animate-rise z-50">
-              <p className="text-label-sm font-semibold mb-md">Thème</p>
-              <div className="grid grid-cols-3 gap-sm mb-xl">
-                {([
-                  { key: "light", label: "Clair", swatch: "#ffffff" },
-                  { key: "sepia", label: "Sépia", swatch: "#f6ecd6" },
-                  { key: "dark", label: "Sombre", swatch: "#171015" },
-                ] as const).map((opt) => (
-                  <button
-                    key={opt.key}
-                    onClick={() => setReaderTheme(opt.key)}
-                    aria-pressed={readerTheme === opt.key}
-                    className={`flex flex-col items-center gap-xs py-md rounded-corner-md border transition-colors cursor-pointer ${
-                      readerTheme === opt.key
-                        ? "border-brand-primary bg-surface-hover"
-                        : "border-border-secondary hover:bg-surface-hover"
-                    }`}
-                  >
-                    <span
-                      className="w-6 h-6 rounded-corner-full border border-border-primary"
-                      style={{ backgroundColor: opt.swatch }}
-                    />
-                    <span className="text-video-title font-medium">
-                      {opt.label}
-                    </span>
-                  </button>
-                ))}
-              </div>
-
-              <div className="flex items-center justify-between mb-sm">
-                <label
-                  htmlFor="reader-font"
-                  className="text-label-sm font-semibold"
-                >
-                  Taille du texte
-                </label>
-                <span className="text-video-title text-text-tertiary">
-                  {readerFont}px
-                </span>
-              </div>
-              <input
-                id="reader-font"
-                type="range"
-                min={16}
-                max={28}
-                step={1}
-                value={readerFont}
-                onChange={(e) => setReaderFont(Number(e.target.value))}
-                className="w-full accent-[#e04070] cursor-pointer mb-xl"
-              />
-
-              <p className="text-label-sm font-semibold mb-sm">Interligne</p>
-              <div className="grid grid-cols-3 gap-sm">
-                {([
-                  { v: 1.5, label: "Serré" },
-                  { v: 1.75, label: "Normal" },
-                  { v: 2.1, label: "Aéré" },
-                ] as const).map((opt) => (
-                  <button
-                    key={opt.v}
-                    onClick={() => setReaderLeading(opt.v)}
-                    aria-pressed={readerLeading === opt.v}
-                    className={`py-sm rounded-corner-md border text-video-title font-medium transition-colors cursor-pointer ${
-                      readerLeading === opt.v
-                        ? "border-brand-primary bg-surface-hover"
-                        : "border-border-secondary hover:bg-surface-hover"
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-        </header>
-
-        <div className="flex-1 w-full max-w-[1280px] mx-auto grid lg:grid-cols-[280px_1fr]">
-          {}
-          <aside
-            className="hidden lg:block py-2xl pr-lg sticky top-[61px] self-start max-h-[calc(100vh-61px)] overflow-y-auto"
-            style={{ borderRight: `1px solid ${t.rule}` }}
-          >
-            <ChapterList
-              book={{ ...readerBook, chapters: safeChapters }}
-              current={safeChapterIndex}
-              onSelect={goToChapter}
-              bookmarks={bookmarks[readerBook.id] ?? []}
-              tone={{ ink: t.ink, sub: t.sub }}
-            />
-          </aside>
-
-          {}
-          <main
-            id="main"
-            className="px-xl md:px-4xl py-3xl md:py-4xl pb-5xl animate-fade"
-          >
-            <article className="max-w-[68ch] mx-auto">
-              <p className="text-video-title uppercase tracking-widest text-brand-primary font-semibold">
-                Chapitre {currentChapter + 1} · {total}
-              </p>
-              <h1
-                className="font-reading text-[34px] md:text-[44px] leading-[1.1] mt-sm mb-2xl"
-                style={{ color: t.ink }}
-              >
-                {chapter.title}
-              </h1>
-              <div
-                className="prose-reader font-reading"
-                style={{
-                  color: t.ink,
-                  fontSize: `${readerFont}px`,
-                  lineHeight: readerLeading,
-                }}
-              >
-                {chapter.content.map((para, i) => (
-                  <p key={i}>{para}</p>
-                ))}
-              </div>
-
-              {}
-              <nav
-                className="flex items-center justify-between gap-lg mt-4xl pt-2xl"
-                style={{ borderTop: `1px solid ${t.rule}` }}
-                aria-label="Navigation entre les chapitres"
-              >
-                <Button
-                  variant="neutral"
-                  iconStart={<ChevronLeft className="w-4 h-4" />}
-                  disabled={currentChapter === 0}
-                  onClick={() => goToChapter(currentChapter - 1)}
-                >
-                  Précédent
-                </Button>
-                <span
-                  className="text-label-sm hidden sm:inline"
-                  style={{ color: t.sub }}
-                >
-                  {currentChapter + 1} / {total}
-                </span>
-                {currentChapter < total - 1 ? (
-                  <Button
-                    variant="primary"
-                    iconEnd={<ChevronRight className="w-4 h-4" />}
-                    onClick={() => goToChapter(currentChapter + 1)}
-                  >
-                    Suivant
-                  </Button>
-                ) : (
-                  <Button
-                    variant="primary"
-                    iconEnd={<Check className="w-4 h-4" />}
-                    onClick={() => go("library")}
-                  >
-                    Terminer
-                  </Button>
-                )}
-              </nav>
-            </article>
-          </main>
-        </div>
-
-        {}
-        <div
-          className="sticky bottom-0 z-40 backdrop-blur-xl"
-          style={{
-            backgroundColor: `${t.panel}e6`,
-            borderTop: `1px solid ${t.rule}`,
-          }}
-        >
-          <div className="max-w-[1280px] mx-auto px-lg md:px-2xl h-[52px] flex items-center gap-lg">
-            <span
-              className="text-video-title font-medium shrink-0"
-              style={{ color: t.sub }}
-            >
-              {pct}%
-            </span>
-            <div
-              className="flex-1 h-1.5 rounded-corner-full overflow-hidden"
-              style={{ backgroundColor: t.rule }}
-              role="progressbar"
-              aria-valuenow={pct}
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-label="Progression de lecture"
-            >
-              <div
-                className="h-full bg-brand-primary transition-all duration-500"
-                style={{ width: `${pct}%` }}
-              />
-            </div>
-            <span
-              className="text-video-title font-medium shrink-0 tabular-nums"
-              style={{ color: t.sub }}
-            >
-              Chapitre {currentChapter + 1} / {total}
-            </span>
-          </div>
-        </div>
-
-        {}
-        {chapterListOpen && (
-          <div className="fixed inset-0 z-50 flex lg:hidden">
-            <div
-              className="absolute inset-0 bg-[#100908]/40 animate-fade"
-              onClick={() => setChapterListOpen(false)}
-            />
-            <aside
-              className="relative w-[86%] max-w-[340px] h-full shadow-2xl flex flex-col animate-slide-in p-xl overflow-y-auto"
-              style={{ backgroundColor: t.page }}
-            >
-              <div className="flex items-center justify-between mb-lg">
-                <h2
-                  className="text-heading font-semibold"
-                  style={{ color: t.ink }}
-                >
-                  Chapitres
-                </h2>
-                <button
-                  onClick={() => setChapterListOpen(false)}
-                  aria-label="Fermer"
-                  className="inline-flex items-center justify-center w-9 h-9 rounded-corner-full hover:bg-surface-hover cursor-pointer"
-                  style={{ color: t.sub }}
-                >
-                  <X className="w-5 h-5" aria-hidden="true" />
-                </button>
-              </div>
-              <ChapterList
-                book={{ ...readerBook, chapters: safeChapters }}
-                current={safeChapterIndex}
-                onSelect={goToChapter}
-                bookmarks={bookmarks[readerBook.id] ?? []}
-                tone={{ ink: t.ink, sub: t.sub }}
-              />
-            </aside>
-          </div>
-        )}
-
-        {toast && (
-          <Toast
-            message={toast.message}
-            variant={toast.variant}
-            onDismiss={() => setToast(null)}
-          />
-        )}
-      </div>
+      <EpubWebReader
+        book={readerBook}
+        currentUser={sessionUser}
+        onClose={() => go("library")}
+        onToast={showToast}
+      />
     )
   }
 
@@ -3292,34 +2945,24 @@ function CheckoutView({
   onRegister: () => void
   onPlaceOrder: (details: CheckoutDetails) => void
 }) {
-  const [form, setForm] = useState(() => {
+  const [form, setForm] = useState({
+    name: user?.name || "",
+    email: user?.email || "",
+    phone: user?.phone || "",
+  })
+
+  useEffect(() => {
     let savedPhone = user?.phone || ""
     if (!savedPhone && typeof window !== "undefined") {
       try {
         savedPhone = localStorage.getItem("ybook-user-phone") || ""
       } catch {}
     }
-    return {
-      name: user?.name || "",
-      email: user?.email || "",
-      phone: savedPhone,
-    }
-  })
-
-  useEffect(() => {
-    if (user) {
-      let savedPhone = user.phone || ""
-      if (!savedPhone && typeof window !== "undefined") {
-        try {
-          savedPhone = localStorage.getItem("ybook-user-phone") || ""
-        } catch {}
-      }
-      setForm((prev) => ({
-        name: prev.name || user.name || "",
-        email: prev.email || user.email || "",
-        phone: prev.phone || savedPhone,
-      }))
-    }
+    setForm((prev) => ({
+      name: prev.name || user?.name || "",
+      email: prev.email || user?.email || "",
+      phone: prev.phone || savedPhone,
+    }))
   }, [user])
 
   const infoValid =
@@ -4475,12 +4118,22 @@ function BookForm({
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [isDragging, setIsDragging] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
+  const [coverUploading, setCoverUploading] = useState(false)
   const [useUrlMode, setUseUrlMode] = useState(false)
+
+  const [fileUrl, setFileUrl] = useState<string>(book?.file_url ?? "")
+  const [epubFilename, setEpubFilename] = useState<string>(
+    book?.epub_filename ?? (book ? `${book.slug || "livre"}.epub` : ""),
+  )
+  const [epubFileSize, setEpubFileSize] = useState<number>(book?.file_size ?? 0)
+  const [epubValidated, setEpubValidated] = useState<boolean>(
+    Boolean(book?.file_url || book?.has_file),
+  )
 
   const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5 Mo
   const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"]
 
-  const handleFile = (file: File) => {
+  const handleFile = async (file: File) => {
     setUploadError(null)
     if (!ALLOWED_TYPES.includes(file.type)) {
       setUploadError("Format non supporté. Veuillez choisir une image JPG, PNG ou WEBP.")
@@ -4499,9 +4152,24 @@ function BookForm({
       }
     }
     reader.onerror = () => {
-      setUploadError("Erreur lors de la lecture du fichier.")
+      setUploadError("Erreur lors de la lecture locale du fichier.")
     }
     reader.readAsDataURL(file)
+
+    setCoverUploading(true)
+    try {
+      const res = await uploadCoverApi(file)
+      if (res && res.url) {
+        set("cover", res.url)
+      }
+    } catch (err: any) {
+      console.error("[Cover upload error]", err)
+      const errorMsg =
+        err?.message || "Erreur lors du téléversement de la couverture."
+      setUploadError(errorMsg)
+    } finally {
+      setCoverUploading(false)
+    }
   }
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -4521,13 +4189,13 @@ function BookForm({
     e.stopPropagation()
     setIsDragging(false)
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      handleFile(e.dataTransfer.files[0])
+      void handleFile(e.dataTransfer.files[0])
     }
   }
 
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
-      handleFile(e.target.files[0])
+      void handleFile(e.target.files[0])
     }
   }
 
@@ -4554,7 +4222,7 @@ function BookForm({
 
   const MAX_EPUB_SIZE = 50 * 1024 * 1024 // 50 Mo
 
-  const handleEpubFile = (file: File) => {
+  const handleEpubFile = async (file: File) => {
     setEpubError(null)
     const isEpub =
       file.name.toLowerCase().endsWith(".epub") ||
@@ -4574,36 +4242,52 @@ function BookForm({
 
     clearEpubTimers()
     setEpubUploading(true)
+    setEpubValidated(false)
     setEpubProgress(25) // 1. Départ immédiat à 25% (progression psychologique)
-    setEpubStatusText("Lecture et initialisation de l'ePub...")
+    setEpubStatusText("Lecture et transmission de l'ePub au serveur...")
 
-    const steps = [
-      { delay: 180, pct: 38, text: "Contrôle de la conformité ePub 3..." },
-      { delay: 350, pct: 50, text: "Validation des chapitres et métadonnées..." },
-      { delay: 500, pct: 75, text: "Téléversement accéléré en cours..." }, // 2. Saut rapide 50% -> 75%
-      { delay: 800, pct: 88, text: "Finalisation du conteneur ePub..." },
-      { delay: 1100, pct: 96, text: "Contrôle d'intégrité..." },
-      { delay: 1300, pct: 100, text: "Fichier ePub validé !" },
-    ]
+    let progressVal = 25
+    const progressInterval = setInterval(() => {
+      if (progressVal < 50) {
+        progressVal += 5
+        setEpubProgress(progressVal)
+        setEpubStatusText("Contrôle d'intégrité par le serveur...")
+      }
+    }, 180)
 
-    steps.forEach(({ delay, pct, text }) => {
-      const timer = setTimeout(() => {
-        setEpubProgress(pct)
-        setEpubStatusText(text)
-        if (pct === 100) {
-          const finalTimer = setTimeout(() => {
-            setEpubUploading(false)
-            const formattedSize =
-              file.size > 1024 * 1024
-                ? `${(file.size / (1024 * 1024)).toFixed(1)} Mo`
-                : `${Math.round(file.size / 1024)} Ko`
-            setEpubFile({ name: file.name, size: formattedSize })
-          }, 350)
-          epubTimerRef.current.push(finalTimer)
-        }
-      }, delay)
-      epubTimerRef.current.push(timer)
-    })
+    try {
+      const res = await uploadEpubApi(file)
+      clearInterval(progressInterval)
+
+      setEpubProgress(75)
+      setEpubStatusText("Téléversement accéléré en cours...")
+      await new Promise((r) => setTimeout(r, 200))
+      setEpubProgress(100)
+      setEpubStatusText("Fichier ePub validé par le serveur !")
+      await new Promise((r) => setTimeout(r, 250))
+
+      setFileUrl(res.file_url)
+      setEpubFilename(res.filename || file.name)
+      if (res.size_bytes) setEpubFileSize(res.size_bytes)
+      const formattedSize =
+        file.size > 1024 * 1024
+          ? `${(file.size / (1024 * 1024)).toFixed(1)} Mo`
+          : `${Math.round(file.size / 1024)} Ko`
+      setEpubFile({ name: res.filename || file.name, size: formattedSize })
+      setEpubValidated(true)
+    } catch (err: any) {
+      clearInterval(progressInterval)
+      console.error("[ePub upload error]", err)
+      const errorMsg =
+        err?.message ||
+        "Erreur lors du téléversement du fichier ePub. Veuillez vérifier le fichier."
+      setEpubError(errorMsg)
+      setEpubFile(null)
+      setFileUrl("")
+      setEpubValidated(false)
+    } finally {
+      setEpubUploading(false)
+    }
   }
 
   const handleEpubDragOver = (e: React.DragEvent) => {
@@ -4623,22 +4307,29 @@ function BookForm({
     e.stopPropagation()
     setIsEpubDragging(false)
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      handleEpubFile(e.dataTransfer.files[0])
+      void handleEpubFile(e.dataTransfer.files[0])
     }
   }
 
   const handleEpubInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
-      handleEpubFile(e.target.files[0])
+      void handleEpubFile(e.target.files[0])
     }
   }
 
   const categories = CATALOG_CATEGORIES.map(({ value }) => value)
-  const valid =
-    form.title.trim() && form.author.trim() && Number(form.price) > 0
+
+  const missingFields: string[] = []
+  if (!form.title.trim()) missingFields.push("Titre")
+  if (!form.author.trim()) missingFields.push("Auteur")
+  if (!form.price || Number(form.price) <= 0) missingFields.push("Prix")
+  if (!form.cover.trim()) missingFields.push("Couverture")
+  if (!book && !fileUrl && !epubFile) missingFields.push("Fichier ePub")
+
+  const valid = missingFields.length === 0
 
   const submit = () => {
-    if (!valid) return
+    if (!valid || epubUploading || coverUploading) return
     const id =
       book?.id ??
       (typeof crypto !== "undefined" && crypto.randomUUID
@@ -4659,6 +4350,10 @@ function BookForm({
       rating: book?.rating ?? 0,
       reviews: book?.reviews ?? 0,
       cover: form.cover.trim(),
+      file_url: fileUrl || book?.file_url || undefined,
+      epub_filename: epubFilename || book?.epub_filename || epubFile?.name || undefined,
+      has_file: Boolean(fileUrl || book?.has_file),
+      file_size: epubFileSize || book?.file_size || undefined,
       description,
       chapters,
       published: book?.published ?? true,
@@ -4948,7 +4643,7 @@ function BookForm({
                     <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                   </div>
                   <p className="text-video-title text-text-tertiary">
-                    {epubFile.size} · Validé pour le Web Reader
+                    {epubFile.size} · ePub valide
                   </p>
                 </div>
                 <div className="flex items-center gap-sm shrink-0">
@@ -5035,29 +4730,45 @@ function BookForm({
           </div>
         </div>
 
-        <div className="border-t border-border-secondary px-xl py-lg flex items-center gap-md">
-          <Button variant="neutral" onClick={onClose}>
-            Annuler
-          </Button>
-          <div className="flex-1" />
-          <Button
-            variant="primary"
-            iconStart={
-              epubUploading ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Check className="w-4 h-4" />
-              )
-            }
-            disabled={!valid || epubUploading}
-            onClick={submit}
-          >
-            {epubUploading
-              ? "Téléversement en cours…"
-              : book
-                ? "Enregistrer"
-                : "Créer le titre"}
-          </Button>
+        <div className="border-t border-border-secondary px-xl py-lg flex flex-col gap-sm">
+          {missingFields.length > 0 && !epubUploading && !coverUploading && (
+            <p className="text-video-title text-text-tertiary flex items-center gap-xs">
+              <Info className="w-3.5 h-3.5 text-brand-primary shrink-0" />
+              <span>
+                Champs requis manquants :{" "}
+                <strong className="text-text-secondary font-medium">
+                  {missingFields.join(", ")}
+                </strong>
+              </span>
+            </p>
+          )}
+
+          <div className="flex items-center gap-md">
+            <Button variant="neutral" onClick={onClose}>
+              Annuler
+            </Button>
+            <div className="flex-1" />
+            <Button
+              variant="primary"
+              iconStart={
+                epubUploading || coverUploading ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Check className="w-4 h-4" />
+                )
+              }
+              disabled={!valid || epubUploading || coverUploading}
+              onClick={submit}
+            >
+              {epubUploading
+                ? "Téléversement ePub…"
+                : coverUploading
+                  ? "Téléversement couverture…"
+                  : book
+                    ? "Enregistrer"
+                    : "Créer le titre"}
+            </Button>
+          </div>
         </div>
       </aside>
     </div>

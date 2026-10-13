@@ -1,0 +1,638 @@
+"use client"
+
+import React, {
+  useEffect,
+  useRef,
+  useState,
+  useCallback,
+} from "react"
+import {
+  ChevronLeft,
+  ChevronRight,
+  Settings,
+  List,
+  X,
+  Loader2,
+  AlertCircle,
+  ShieldAlert,
+  FileQuestion,
+  Lock,
+} from "lucide-react"
+import { Button } from "@figma/astraui"
+import { getPublicApiBaseUrl } from "@/lib/runtime-env"
+import { createApiHeaders } from "@/lib/api-headers"
+import type { Book } from "@/features/catalog/types"
+import type { AuthUser } from "@/features/auth/types"
+import {
+  getBookReadingProgress,
+  saveBookReadingProgress,
+} from "@/features/dashboard/dashboard.api"
+
+const API_BASE_URL = getPublicApiBaseUrl()
+
+export type ReaderTheme = "light" | "sepia" | "dark"
+
+interface TocItem {
+  id: string
+  label: string
+  href: string
+  subitems?: TocItem[]
+}
+
+interface EpubWebReaderProps {
+  book: Book
+  currentUser: AuthUser | null
+  onClose: () => void
+  onToast?: (message: string, variant?: "default" | "success" | "warning" | "error") => void
+}
+
+export function EpubWebReader({
+  book,
+  currentUser,
+  onClose,
+  onToast,
+}: EpubWebReaderProps) {
+  const viewerRef = useRef<HTMLDivElement>(null)
+  const bookInstanceRef = useRef<any>(null)
+  const renditionRef = useRef<any>(null)
+
+  const [loading, setLoading] = useState(true)
+  const [loadingStatus, setLoadingStatus] = useState("Connexion au livre numérique...")
+  const [errorType, setErrorType] = useState<"BOOK_NOT_OWNED" | "EPUB_NOT_AVAILABLE" | "GENERIC" | null>(null)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+
+  // Lecture & navigation
+  const [toc, setToc] = useState<TocItem[]>([])
+  const [currentChapterTitle, setCurrentChapterTitle] = useState("")
+  const [progressPercent, setProgressPercent] = useState<number>(0)
+  const [chapterListOpen, setChapterListOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+
+  // Préférences lecteur
+  const [theme, setTheme] = useState<ReaderTheme>("light")
+  const [fontSize, setFontSize] = useState<number>(20)
+  const [lineHeight, setLineHeight] = useState<number>(1.75)
+
+  // Throttling de la sauvegarde de progression
+  const lastSavedRef = useRef<{ cfi: string; time: number }>({ cfi: "", time: 0 })
+
+  const themeColors = {
+    light: {
+      bg: "#fff6eb",
+      text: "#100908",
+      sub: "#6b615c",
+      border: "#c1b5ac40",
+      panel: "#fffdf9",
+    },
+    sepia: {
+      bg: "#f6ecd6",
+      text: "#432d16",
+      sub: "#8a7048",
+      border: "#432d1622",
+      panel: "#efe2c6",
+    },
+    dark: {
+      bg: "#171015",
+      text: "#ece2e6",
+      sub: "#9a8890",
+      border: "#ffffff1a",
+      panel: "#241820",
+    },
+  }[theme]
+
+  // Envoi throttlé de la progression
+  const throttledSaveProgress = useCallback(
+    (cfi: string, percent: number) => {
+      const now = Date.now()
+      // Enregistrement au plus toutes les 3 secondes si le CFI change
+      if (lastSavedRef.current.cfi !== cfi && now - lastSavedRef.current.time > 3000) {
+        lastSavedRef.current = { cfi, time: now }
+        void saveBookReadingProgress(book.id, { cfi, percent })
+      }
+    },
+    [book.id],
+  )
+
+  useEffect(() => {
+    let isMounted = true
+    let renditionInstance: any = null
+    let bookInstance: any = null
+
+    async function initEpub() {
+      if (!viewerRef.current) return
+      setLoading(true)
+      setErrorType(null)
+      setErrorMessage(null)
+
+      try {
+        setLoadingStatus("Initialisation du lecteur ePub...")
+        const epubModule = await import("epubjs")
+        const ePub = (epubModule as any).default || epubModule
+
+        // 1. Récupérer la dernière progression sauvegardée
+        let savedCfi: string | undefined
+        try {
+          const progressRes = await getBookReadingProgress(book.id)
+          if (progressRes.cfi) {
+            savedCfi = progressRes.cfi
+          }
+          if (progressRes.percent !== undefined) {
+            setProgressPercent(progressRes.percent)
+          }
+        } catch {}
+
+        // 2. Tenter la lecture chapitre par chapitre via /files/
+        setLoadingStatus("Chargement des chapitres ePub...")
+        const filesUrl = `${API_BASE_URL}/api/v1/library/${book.id}/files/`
+        let loadedViaStream = false
+
+        try {
+          bookInstance = ePub(filesUrl, { requestCredentials: true })
+          await Promise.race([
+            bookInstance.ready,
+            new Promise((_, reject) =>
+              setTimeout(() => reject(new Error("STREAM_TIMEOUT")), 4000),
+            ),
+          ])
+          loadedViaStream = true
+        } catch {
+          loadedViaStream = false
+        }
+
+        // 3. Fallback : téléchargement du conteneur ePub binaire complet
+        if (!loadedViaStream) {
+          setLoadingStatus("Téléchargement sécurisé de l'e-book...")
+          const epubUrl = `${API_BASE_URL}/api/v1/library/${book.id}/epub`
+          const response = await fetch(epubUrl, {
+            credentials: "include",
+            headers: createApiHeaders(),
+          })
+
+          if (!response.ok) {
+            if (response.status === 403) {
+              setErrorType("BOOK_NOT_OWNED")
+              setErrorMessage("Vous ne possédez pas ce livre dans votre bibliothèque.")
+              setLoading(false)
+              return
+            }
+            if (response.status === 404) {
+              setErrorType("EPUB_NOT_AVAILABLE")
+              setErrorMessage("Le fichier ePub de ce titre est en cours de préparation.")
+              setLoading(false)
+              return
+            }
+            throw new Error(`Erreur serveur (${response.status})`)
+          }
+
+          const arrayBuffer = await response.arrayBuffer()
+          bookInstance = ePub(arrayBuffer)
+          await bookInstance.ready
+        }
+
+        if (!isMounted || !viewerRef.current) return
+
+        bookInstanceRef.current = bookInstance
+
+        // 4. Extraction de la table des matières (TOC)
+        try {
+          const nav = await bookInstance.loaded.navigation
+          if (nav && nav.toc) {
+            setToc(nav.toc)
+          }
+        } catch {}
+
+        // 5. Rendu du livre dans le conteneur DOM
+        viewerRef.current.innerHTML = ""
+        renditionInstance = bookInstance.renderTo(viewerRef.current, {
+          width: "100%",
+          height: "100%",
+          spread: "none",
+          flow: "paginated",
+        })
+        renditionRef.current = renditionInstance
+
+        // 6. Sécurité & Protections anti-copie à l'intérieur du conteneur
+        renditionInstance.hooks.content.register((contents: any) => {
+          const doc = contents?.document
+          if (!doc) return
+
+          // Bloquer le clic droit
+          doc.addEventListener("contextmenu", (e: MouseEvent) => e.preventDefault())
+
+          // Bloquer la sélection de texte
+          if (doc.body) {
+            doc.body.style.userSelect = "none"
+            doc.body.style.webkitUserSelect = "none"
+          }
+
+          // Bloquer l'impression
+          const printStyle = doc.createElement("style")
+          printStyle.textContent = "@media print { body { display: none !important; } }"
+          doc.head?.appendChild(printStyle)
+        })
+
+        // 7. Thèmes & Typographie
+        renditionInstance.themes.register("light", {
+          body: {
+            background: "#fff6eb !important",
+            color: "#100908 !important",
+            "font-family": "Georgia, Cambria, 'Times New Roman', Times, serif !important",
+          },
+        })
+        renditionInstance.themes.register("sepia", {
+          body: {
+            background: "#f6ecd6 !important",
+            color: "#432d16 !important",
+            "font-family": "Georgia, Cambria, 'Times New Roman', Times, serif !important",
+          },
+        })
+        renditionInstance.themes.register("dark", {
+          body: {
+            background: "#171015 !important",
+            color: "#ece2e6 !important",
+            "font-family": "Georgia, Cambria, 'Times New Roman', Times, serif !important",
+          },
+        })
+        renditionInstance.themes.select(theme)
+        renditionInstance.themes.fontSize(`${fontSize}px`)
+
+        // 8. Écoute du changement d'emplacement (relocated)
+        renditionInstance.on("relocated", (location: any) => {
+          if (!isMounted) return
+          if (location && location.start) {
+            const cfi = location.start.cfi
+            const pct = Math.round((location.start.percentage || 0) * 100)
+            setProgressPercent(pct)
+            throttledSaveProgress(cfi, pct)
+
+            // Trouver le titre du chapitre actuel si présent dans la TOC
+            if (location.start.href && toc.length > 0) {
+              const item = toc.find((t) => location.start.href.includes(t.href))
+              if (item) setCurrentChapterTitle(item.label)
+            }
+          }
+        })
+
+        // 9. Afficher le livre (au CFI sauvegardé ou au début)
+        if (savedCfi) {
+          await renditionInstance.display(savedCfi)
+        } else {
+          await renditionInstance.display()
+        }
+
+        if (isMounted) {
+          setLoading(false)
+        }
+      } catch (err: any) {
+        console.error("[EpubWebReader] Erreur de chargement:", err)
+        if (isMounted) {
+          setLoading(false)
+          setErrorType("GENERIC")
+          setErrorMessage(
+            err?.message ||
+              "Impossible de charger le fichier ePub. Veuillez vérifier votre connexion.",
+          )
+        }
+      }
+    }
+
+    void initEpub()
+
+    return () => {
+      isMounted = false
+      if (renditionInstance) {
+        try {
+          renditionInstance.destroy()
+        } catch {}
+      }
+      if (bookInstance) {
+        try {
+          bookInstance.destroy()
+        } catch {}
+      }
+    }
+  }, [book.id])
+
+  // Mise à jour réactive du thème
+  useEffect(() => {
+    if (renditionRef.current) {
+      renditionRef.current.themes.select(theme)
+    }
+  }, [theme])
+
+  // Mise à jour de la taille de police
+  useEffect(() => {
+    if (renditionRef.current) {
+      renditionRef.current.themes.fontSize(`${fontSize}px`)
+    }
+  }, [fontSize])
+
+  // Navigation page précédente / suivante
+  const handlePrev = useCallback(() => {
+    if (renditionRef.current) {
+      renditionRef.current.prev()
+    }
+  }, [])
+
+  const handleNext = useCallback(() => {
+    if (renditionRef.current) {
+      renditionRef.current.next()
+    }
+  }, [])
+
+  // Navigation clavier
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "ArrowLeft") handlePrev()
+      if (e.key === "ArrowRight") handleNext()
+      if (e.key === "Escape") setSettingsOpen(false)
+    }
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [handlePrev, handleNext])
+
+  // Sauter à un chapitre de la TOC
+  const handleGoToChapter = (href: string) => {
+    if (renditionRef.current) {
+      renditionRef.current.display(href)
+      setChapterListOpen(false)
+    }
+  }
+
+  // Écran d'erreur dédié
+  if (errorType) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-xl bg-surface-secondary-bg text-center animate-fade">
+        <div className="w-16 h-16 rounded-corner-full bg-brand-primary/10 text-brand-primary flex items-center justify-center mb-lg">
+          {errorType === "BOOK_NOT_OWNED" ? (
+            <ShieldAlert className="w-8 h-8 text-brand-primary" />
+          ) : errorType === "EPUB_NOT_AVAILABLE" ? (
+            <FileQuestion className="w-8 h-8 text-brand-primary" />
+          ) : (
+            <AlertCircle className="w-8 h-8 text-danger" />
+          )}
+        </div>
+
+        <h1 className="text-heading font-semibold text-text-primary mb-sm">
+          {errorType === "BOOK_NOT_OWNED"
+            ? "Accès restreint à l'e-book"
+            : errorType === "EPUB_NOT_AVAILABLE"
+              ? "Livre numérique en cours de préparation"
+              : "Impossible d'ouvrir l'e-book"}
+        </h1>
+
+        <p className="text-label-sm text-text-secondary max-w-[480px] mb-xl leading-relaxed">
+          {errorMessage}
+        </p>
+
+        <div className="flex flex-wrap gap-md justify-center">
+          <Button variant="primary" onClick={onClose}>
+            Retour à la bibliothèque
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div
+      className="min-h-screen flex flex-col select-none relative"
+      style={{ backgroundColor: themeColors.bg }}
+      onContextMenu={(e) => e.preventDefault()}
+    >
+      {/* Styles de protection d'impression */}
+      <style dangerouslySetInnerHTML={{ __html: "@media print { body { display: none !important; } }" }} />
+
+      {/* Barre supérieure du lecteur */}
+      <header className="sticky top-0 z-40 bg-[#1a0f0c] text-white select-none">
+        <div className="max-w-[1280px] mx-auto px-lg md:px-2xl h-[60px] flex items-center gap-lg">
+          <button
+            onClick={onClose}
+            className="inline-flex items-center gap-sm text-label-sm font-medium text-white/85 hover:text-white transition-colors cursor-pointer"
+          >
+            <ChevronLeft className="w-4 h-4" aria-hidden="true" />
+            Bibliothèque
+          </button>
+
+          <div className="min-w-0 flex-1 text-center">
+            <p className="text-label-sm font-semibold text-white truncate">
+              {book.title}
+            </p>
+            <p className="text-video-title text-white/55 truncate">
+              {currentChapterTitle || book.author}
+            </p>
+          </div>
+
+          <div className="flex items-center gap-xs">
+            {/* Bouton table des matières */}
+            {toc.length > 0 && (
+              <button
+                onClick={() => setChapterListOpen((v) => !v)}
+                aria-pressed={chapterListOpen}
+                aria-label="Table des matières"
+                className="inline-flex items-center justify-center w-9 h-9 rounded-corner-full text-white/85 hover:bg-white/10 transition-colors cursor-pointer"
+              >
+                <List className="w-[18px] h-[18px]" aria-hidden="true" />
+              </button>
+            )}
+
+            {/* Réglages de lecture */}
+            <button
+              onClick={() => setSettingsOpen((v) => !v)}
+              aria-pressed={settingsOpen}
+              aria-label="Réglages de lecture"
+              className={`inline-flex items-center justify-center w-9 h-9 rounded-corner-full transition-colors cursor-pointer ${
+                settingsOpen ? "bg-white/20 text-white" : "text-white/85 hover:bg-white/10"
+              }`}
+            >
+              <Settings className="w-[18px] h-[18px]" aria-hidden="true" />
+            </button>
+          </div>
+        </div>
+
+        {/* Panneau de réglages (Thème, Taille police) */}
+        {settingsOpen && (
+          <div className="absolute right-4 top-[64px] w-[300px] max-w-[calc(100vw-32px)] rounded-corner-lg border border-border-secondary bg-surface-bg text-text-primary shadow-2xl p-xl animate-fade z-50">
+            <p className="text-label-sm font-semibold mb-md">Thème de lecture</p>
+            <div className="grid grid-cols-3 gap-sm mb-xl">
+              {(
+                [
+                  { key: "light", label: "Clair", swatch: "#ffffff" },
+                  { key: "sepia", label: "Sépia", swatch: "#f6ecd6" },
+                  { key: "dark", label: "Sombre", swatch: "#171015" },
+                ] as const
+              ).map((opt) => (
+                <button
+                  key={opt.key}
+                  onClick={() => setTheme(opt.key)}
+                  aria-pressed={theme === opt.key}
+                  className={`flex flex-col items-center gap-xs py-md rounded-corner-md border transition-colors cursor-pointer ${
+                    theme === opt.key
+                      ? "border-brand-primary bg-surface-hover"
+                      : "border-border-secondary hover:bg-surface-hover"
+                  }`}
+                >
+                  <span
+                    className="w-6 h-6 rounded-corner-full border border-border-primary"
+                    style={{ backgroundColor: opt.swatch }}
+                  />
+                  <span className="text-video-title font-medium">{opt.label}</span>
+                </button>
+              ))}
+            </div>
+
+            <div className="flex items-center justify-between mb-sm">
+              <label htmlFor="font-range" className="text-label-sm font-semibold">
+                Taille du texte
+              </label>
+              <span className="text-video-title text-text-tertiary">{fontSize}px</span>
+            </div>
+            <input
+              id="font-range"
+              type="range"
+              min={16}
+              max={28}
+              step={1}
+              value={fontSize}
+              onChange={(e) => setFontSize(Number(e.target.value))}
+              className="w-full accent-[#e04070] cursor-pointer"
+            />
+          </div>
+        )}
+      </header>
+
+      {/* Contenu principal de lecture */}
+      <main className="flex-1 w-full max-w-[1020px] mx-auto flex flex-col relative px-md md:px-xl py-lg">
+        {loading ? (
+          <div className="flex-1 flex flex-col items-center justify-center p-xl text-center">
+            <Loader2 className="w-10 h-10 text-brand-primary animate-spin mb-md" />
+            <p className="text-label-sm font-semibold text-text-primary mb-xs">
+              {loadingStatus}
+            </p>
+            <p className="text-video-title text-text-secondary">
+              Mise en page conforme de votre e-book...
+            </p>
+          </div>
+        ) : (
+          <div className="flex-1 w-full min-h-[70vh] flex flex-col relative">
+            {/* Zone de rendu epub.js */}
+            <div
+              ref={viewerRef}
+              className="flex-1 w-full h-full min-h-[65vh] overflow-hidden"
+              style={{ minHeight: "calc(100vh - 160px)" }}
+            />
+
+            {/* Boutons de navigation flottants latéraux */}
+            <button
+              onClick={handlePrev}
+              aria-label="Page précédente"
+              className="absolute left-0 top-1/2 -translate-y-1/2 p-md rounded-corner-full bg-[#1a0f0c]/60 text-white hover:bg-[#1a0f0c] transition-colors cursor-pointer shadow-md opacity-40 hover:opacity-100 hidden sm:flex items-center justify-center"
+            >
+              <ChevronLeft className="w-6 h-6" />
+            </button>
+            <button
+              onClick={handleNext}
+              aria-label="Page suivante"
+              className="absolute right-0 top-1/2 -translate-y-1/2 p-md rounded-corner-full bg-[#1a0f0c]/60 text-white hover:bg-[#1a0f0c] transition-colors cursor-pointer shadow-md opacity-40 hover:opacity-100 hidden sm:flex items-center justify-center"
+            >
+              <ChevronRight className="w-6 h-6" />
+            </button>
+          </div>
+        )}
+      </main>
+
+      {/* Barre inférieure de progression et filigrane acheteur */}
+      <footer
+        className="sticky bottom-0 z-40 backdrop-blur-xl border-t px-lg py-sm"
+        style={{
+          backgroundColor: `${themeColors.panel}e6`,
+          borderColor: themeColors.border,
+        }}
+      >
+        <div className="max-w-[1280px] mx-auto flex flex-col gap-xs">
+          <div className="flex items-center justify-between gap-md text-video-title">
+            <span className="font-semibold" style={{ color: themeColors.text }}>
+              {progressPercent}%
+            </span>
+            <div
+              className="flex-1 h-1.5 rounded-corner-full overflow-hidden bg-border-secondary"
+              role="progressbar"
+              aria-valuenow={progressPercent}
+              aria-valuemin={0}
+              aria-valuemax={100}
+            >
+              <div
+                className="h-full bg-brand-primary transition-all duration-300"
+                style={{ width: `${progressPercent}%` }}
+              />
+            </div>
+            <div className="flex items-center gap-sm">
+              <Button
+                variant="neutral"
+                size="small"
+                onClick={handlePrev}
+                iconStart={<ChevronLeft className="w-3.5 h-3.5" />}
+              >
+                Précédent
+              </Button>
+              <Button
+                variant="neutral"
+                size="small"
+                onClick={handleNext}
+                iconEnd={<ChevronRight className="w-3.5 h-3.5" />}
+              >
+                Suivant
+              </Button>
+            </div>
+          </div>
+
+          {/* Filigrane d'authenticité acheteur */}
+          <div className="text-center text-[11px] text-text-tertiary select-none opacity-60">
+            Exemplaire numérique sous licence YéYéBook — {currentUser?.email || "Utilisateur enregistré"}
+          </div>
+        </div>
+      </footer>
+
+      {/* Tiroir latéral de la table des matières */}
+      {chapterListOpen && (
+        <div className="fixed inset-0 z-50 flex">
+          <div
+            className="absolute inset-0 bg-[#100908]/40 animate-fade"
+            onClick={() => setChapterListOpen(false)}
+          />
+          <aside
+            className="relative w-[86%] max-w-[340px] h-full shadow-2xl flex flex-col animate-slide-in p-xl overflow-y-auto"
+            style={{ backgroundColor: themeColors.bg }}
+          >
+            <div className="flex items-center justify-between mb-lg border-b pb-md" style={{ borderColor: themeColors.border }}>
+              <h2 className="text-heading font-semibold" style={{ color: themeColors.text }}>
+                Sommaire
+              </h2>
+              <button
+                onClick={() => setChapterListOpen(false)}
+                aria-label="Fermer le sommaire"
+                className="inline-flex items-center justify-center w-8 h-8 rounded-corner-full hover:bg-surface-hover cursor-pointer"
+                style={{ color: themeColors.sub }}
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="flex flex-col gap-xs">
+              {toc.map((item, idx) => (
+                <button
+                  key={item.id || idx}
+                  onClick={() => handleGoToChapter(item.href)}
+                  className="text-left py-sm px-md rounded-corner-md text-label-sm hover:bg-surface-hover transition-colors cursor-pointer"
+                  style={{ color: themeColors.text }}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          </aside>
+        </div>
+      )}
+    </div>
+  )
+}

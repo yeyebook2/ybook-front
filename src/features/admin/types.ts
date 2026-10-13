@@ -50,6 +50,10 @@ export type AdminBook = {
   description: string
   status: "published" | "draft" | "archived"
   published: boolean
+  file_url?: string
+  epub_filename?: string
+  has_file?: boolean
+  file_size?: number
   created_at?: string
 }
 
@@ -64,6 +68,24 @@ export type AdminBookInput = {
   description?: string
   status?: "published" | "draft"
   published?: boolean
+  file_url?: string
+  epub_filename?: string
+}
+
+export type UploadCoverResponse = {
+  success: boolean
+  url: string
+  width?: number
+  height?: number
+  message?: string
+}
+
+export type UploadEpubResponse = {
+  success: boolean
+  file_url: string
+  filename: string
+  size_bytes?: number
+  message?: string
 }
 
 export type AdminOrderItem = {

@@ -10,9 +10,14 @@ export const DEFAULT_API_HEADERS: Record<string, string> = {
 
 export function createApiHeaders(
   customHeaders?: HeadersInit,
+  options?: { isFormData?: boolean },
 ): Record<string, string> {
   const headers: Record<string, string> = {
     ...DEFAULT_API_HEADERS,
+  }
+
+  if (options?.isFormData) {
+    delete headers["Content-Type"]
   }
 
   if (customHeaders) {

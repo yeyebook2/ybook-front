@@ -186,3 +186,38 @@ export async function getLibraryItems(): Promise<DashboardBook[]> {
     return []
   }
 }
+
+export async function getBookReadingProgress(
+  bookId: string | number,
+): Promise<{ cfi?: string; percent?: number }> {
+  try {
+    const res = await request<{
+      cfi?: string
+      percent?: number
+      progress?: number
+      progress_percent?: number
+    }>(`/library/${bookId}/progress`)
+    return {
+      cfi: res.cfi,
+      percent: res.percent ?? res.progress_percent ?? res.progress,
+    }
+  } catch {
+    return {}
+  }
+}
+
+export async function saveBookReadingProgress(
+  bookId: string | number,
+  data: { cfi: string; percent: number },
+): Promise<void> {
+  try {
+    await fetch(`${API_BASE_URL}${API_PREFIX}/library/${bookId}/progress`, {
+      method: "PUT",
+      credentials: "include",
+      headers: createApiHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify(data),
+    })
+  } catch (err) {
+    console.warn("[Library API] Erreur lors de la sauvegarde de progression:", err)
+  }
+}

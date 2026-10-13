@@ -25,6 +25,10 @@ export type Book = {
   slug?: string
   language?: string
   publishedAt?: string
+  file_url?: string
+  epub_filename?: string
+  has_file?: boolean
+  file_size?: number
 }
 
 export type CatalogBook = {
@@ -48,6 +52,10 @@ export type CatalogBook = {
   language?: string
   publishedAt?: string
   published?: boolean
+  file_url?: string
+  epub_filename?: string
+  has_file?: boolean
+  file_size?: number
 }
 
 export type CatalogSortBy = "relevance" | "price" | "published_at" | "popularity" | "rating"

@@ -8,6 +8,8 @@ import type {
   AdminBookInput,
   AdminOrder,
   AdminStats,
+  UploadCoverResponse,
+  UploadEpubResponse,
 } from "./types"
 
 import { createApiHeaders } from "@/lib/api-headers"
@@ -17,15 +19,19 @@ const API_PREFIX = "/api/v1/admin"
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const url = `${API_BASE_URL}${API_PREFIX}${path}`
+  const isFormData = typeof FormData !== "undefined" && init.body instanceof FormData
   let response: Response
   try {
     response = await fetch(url, {
       ...init,
       credentials: "include",
-      headers: createApiHeaders({
-        "Cache-Control": "no-cache",
-        ...init.headers,
-      }),
+      headers: createApiHeaders(
+        {
+          "Cache-Control": "no-cache",
+          ...init.headers,
+        },
+        { isFormData },
+      ),
     })
   } catch (networkErr) {
     throw handleNetworkOrFetchError(
@@ -163,3 +169,22 @@ export async function updateOrderStatusApi(
     body: JSON.stringify({ status }),
   })
 }
+
+export async function uploadCoverApi(file: File): Promise<UploadCoverResponse> {
+  const formData = new FormData()
+  formData.append("file", file)
+  return request<UploadCoverResponse>("/books/upload-cover", {
+    method: "POST",
+    body: formData,
+  })
+}
+
+export async function uploadEpubApi(file: File): Promise<UploadEpubResponse> {
+  const formData = new FormData()
+  formData.append("file", file)
+  return request<UploadEpubResponse>("/books/upload-epub", {
+    method: "POST",
+    body: formData,
+  })
+}
+

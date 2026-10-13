@@ -35,8 +35,8 @@
   - `403` : `FORBIDDEN` / `ADMIN_REQUIRED` (Rôle admin requis)
   - `404` : `NOT_FOUND` / `BOOK_NOT_FOUND` / `ORDER_NOT_FOUND`
   - `410` : `ORDER_EXPIRED` (Commande de plus de 60 min non payée)
-  - `413` : `PAYLOAD_TOO_LARGE` / `FILE_TOO_LARGE` (Fichier supérieur à 50 Mo pour ePub ou 5 Mo pour image)
-  - `415` : `UNSUPPORTED_MEDIA_TYPE` (Format invalide, ex: fichier non ePub)
+  - `413` : `FILE_TOO_LARGE` (Fichier supérieur à 50 Mo pour ePub ou 5 Mo pour image)
+  - `415` : `UNSUPPORTED_MEDIA_TYPE` (Format invalide, ex: fichier non ePub ou ePub corrompu)
   - `422` : Validation Pydantic
   - `429` : `AUTH_RATE_LIMITED` (avec header `Retry-After: <secondes>`)
   - `503` : `SERVICE_UNAVAILABLE` (Base de données momentanément indisponible, avec header `Retry-After: <secondes>`)
@@ -146,6 +146,9 @@ GET /api/v1/admin/books?page=1&limit=20&search=amadou&status=all
       "reviews": 32,
       "cover": "https://...",
       "description": "L'histoire de Birahima...",
+      "has_file": true,
+      "epub_filename": "allah-n-est-pas-oblige.epub",
+      "file_size": 14258900,
       "status": "published",
       "published": true,
       "created_at": "2026-09-01T10:00:00Z"
@@ -162,8 +165,9 @@ GET /api/v1/admin/books?page=1&limit=20&search=amadou&status=all
 ### 4.2 Création d'un livre : `POST /api/v1/admin/books`
 
 > **Note sur le champ `cover` et le fichier ePub** :
-> 1. **Couverture (`cover`)** : Le formulaire admin propose un système de **glisser-déposer (Drag & Drop)** de fichiers image (JPG, PNG, WEBP, max 5 Mo) ou saisie d'URL. Le champ `cover` accepte une URL HTTP(S) ou une chaîne Base64 (`data:image/jpeg;base64,...`).
-> 2. **Fichier ePub (`file_url` / `epub_filename`)** : Le formulaire intègre également une zone d'upload dédiée aux fichiers `.epub` (max 50 Mo). Après téléversement (ou encodage), `file_url` référence l'ePub sécurisé et `epub_filename` conserve le nom d'origine.
+> 1. **Couverture (`cover`)** : Le formulaire admin téléverse l'image via `POST /api/v1/admin/books/upload-cover` (max 5 Mo) qui renvoie une URL CDN/stockage, ou transmet directement l'image en Base64 (`data:image/jpeg;base64,...`).
+> 2. **Fichier ePub (`file_url` / `epub_filename`)** : Le fichier `.epub` est préalablement envoyé via `POST /api/v1/admin/books/upload-epub` (max 50 Mo), qui retourne une référence interne `file_url` sous la forme `private://books/...`.
+>    - **Important** : `file_url` n'est pas une URL publique de téléchargement, mais un identifiant de stockage privé sécurisé. Il doit être renvoyé tel quel dans le corps du `POST` ou `PUT /admin/books`. Le livre dispose ainsi des drapeaux `has_file: true`, `epub_filename` et `file_size`.
 
 ```http
 POST /api/v1/admin/books
@@ -179,7 +183,7 @@ Content-Type: application/json
   "pages": 165,
   "year": 1979,
   "cover": "https://storage.yeyebook.com/covers/une-si-longue-lettre.jpg",
-  "file_url": "https://storage.yeyebook.com/books/c7a8b321/une-si-longue-lettre.epub",
+  "file_url": "private://books/c7a8b321-4f1e/book.epub",
   "epub_filename": "une-si-longue-lettre.epub",
   "description": "Roman épistolaire majeur de la littérature sénégalaise.",
   "status": "published"
@@ -201,6 +205,9 @@ Content-Type: application/json
     "pages": 165,
     "year": 1979,
     "cover": "https://...",
+    "has_file": true,
+    "epub_filename": "une-si-longue-lettre.epub",
+    "file_size": 14258900,
     "description": "Roman épistolaire majeur...",
     "status": "published",
     "published": true
@@ -299,9 +306,9 @@ DELETE /api/v1/admin/books/c7a8b321-4f1e-4c8d-93e1-7e89ab0123cd
 
 ---
 
-### 4.6 (Optionnel) Téléversement direct de couverture : `POST /api/v1/admin/books/upload-cover`
+### 4.6 Téléversement direct de couverture : `POST /api/v1/admin/books/upload-cover`
 
-Endpoint d'upload binaire direct pour hébergement sur Cloudflare R2 / AWS S3 selon les recommandations du cahier des charges (Section 4.2.3 & 4.7.1) :
+Endpoint d'upload binaire direct pour hébergement d'image selon les recommandations du cahier des charges (Section 4.2.3 & 4.7.1) :
 
 ```http
 POST /api/v1/admin/books/upload-cover
@@ -315,17 +322,17 @@ Content-Type: multipart/form-data
 ```json
 {
   "success": true,
-  "url": "https://cdn.yeyebook.com/covers/c7a8b321-4f1e-cover.jpg",
-  "width": 800,
-  "height": 1200
+  "url": "https://cdn.yeyebook.com/covers/c7a8b321-4f1e-cover.jpg"
 }
 ```
+
+*Note : Les couvertures peuvent également être envoyées directement encodées en base64 (`data:image/jpeg;base64,...`) dans le champ `cover` de l'objet livre.*
 
 ---
 
 ### 4.7 Téléversement de fichier ePub : `POST /api/v1/admin/books/upload-epub`
 
-Conformément aux sections **4.2.3, 4.7.1 et 4.7.4 du Cahier des charges** (« Upload fichier ePub, validation format, max 50Mo »), cet endpoint permet de réceptionner le fichier binaire `.epub` du livre et de le stocker de façon sécurisée (ex. sur bucket Cloudflare R2 / AWS S3 sous `/books/{book_id}/book.epub` avec ACL privée).
+Conformément aux sections **4.2.3, 4.7.1 et 4.7.4 du Cahier des charges** (« Upload fichier ePub, validation format, max 50Mo »), cet endpoint permet de réceptionner le fichier binaire `.epub` du livre et de le stocker dans un dossier sécurisé privé (non accessible par adresse web directe).
 
 ```http
 POST /api/v1/admin/books/upload-epub
@@ -336,36 +343,36 @@ Content-Type: multipart/form-data
 - `file` : Fichier binaire ePub strictement au format `.epub` (`application/epub+zip`), taille maximale **50 Mo**.
 
 **Contraintes de validation backend requises** :
-1. **Format MIME strict** : Doit être `application/epub+zip` (ou extension `.epub`). Tout autre format (PDF, DOCX, etc.) doit être rejeté avec une erreur **`415 Unsupported Media Type`** ou **`422 Unprocessable Entity`**.
-2. **Taille maximale** : Maximum 50 Mo. Si le fichier dépasse cette limite, le serveur doit renvoyer une erreur **`413 Payload Too Large`**.
-3. **Contrôle d'intégrité (recommandé)** : Validation de la structure ePub via `epubcheck` avant finalisation du stockage.
+1. **Contrôle d'intégrité et format strict** : Le backend inspecte et ouvre réellement l'archive du fichier pour s'assurer qu'il s'agit d'un ePub valide (`META-INF/container.xml`). Un fichier non ePub ou un PDF simplement renommé en `.epub` est immédiatement rejeté avec une erreur **`415 UNSUPPORTED_MEDIA_TYPE`**.
+2. **Taille maximale** : Maximum 50 Mo. Si le fichier dépasse cette limite, le serveur renvoie une erreur **`413 FILE_TOO_LARGE`**.
+3. **Référence interne sécurisée** : La réponse renvoie `file_url` sous le schéma privé `private://books/...`. Ce n'est pas un lien direct téléchargeable par un navigateur, mais un identifiant interne que le frontend réinjecte dans `file_url` lors du `POST` ou `PUT /admin/books`.
 
-#### Réponse de succès (200 OK ou 201 Created) :
+#### Réponse de succès (200 OK) :
 ```json
 {
   "success": true,
-  "message": "Fichier ePub téléversé avec succès.",
-  "file_url": "https://storage.yeyebook.com/books/c7a8b321-4f1e/book.epub",
+  "message": "Fichier ePub téléversé et validé avec succès.",
+  "file_url": "private://books/c7a8b321-4f1e/book.epub",
   "filename": "une-si-longue-lettre.epub",
   "size_bytes": 14258900
 }
 ```
 
 #### Réponses d'erreur spécifiques :
-- **Fichier trop volumineux (413 Payload Too Large)** :
+- **Fichier trop volumineux (413 FILE_TOO_LARGE)** :
 ```json
 {
   "success": false,
-  "code": "PAYLOAD_TOO_LARGE",
-  "message": "Le fichier ePub dépasse la taille maximale autorisée de 50 Mo."
+  "code": "FILE_TOO_LARGE",
+  "message": "Le fichier dépasse la taille maximale autorisée de 50 Mo."
 }
 ```
-- **Format non supporté (415 Unsupported Media Type)** :
+- **Format non supporté (415 UNSUPPORTED_MEDIA_TYPE)** :
 ```json
 {
   "success": false,
   "code": "UNSUPPORTED_MEDIA_TYPE",
-  "message": "Seuls les fichiers au format ePub (.epub) sont acceptés."
+  "message": "Le fichier fourni n'est pas un fichier ePub valide."
 }
 ```
 
@@ -446,3 +453,64 @@ Content-Type: application/json
   "message": "Statut de la commande mis à jour."
 }
 ```
+
+---
+
+## 6. Intégration Web Reader & Bibliothèque Acheteur (`/api/v1/library`)
+
+Le lecteur web ePub du frontend (`epub.js`) consomme directement les fichiers ePub téléversés via l'espace admin. Les anciennes routes `/sessions` sont obsolètes (réponse `410 Gone`).
+
+### 6.1 Accès aux fichiers du livre (Sécurisé par session acheteur)
+
+L'accès est réservé exclusivement aux acheteurs ayant réglé leur commande (`status: "paid"`).
+- **Streaming chapitre par chapitre (mode prioritaire)** :
+  ```http
+  GET /api/v1/library/{book_id}/files/
+  ```
+  Appelé par `epub.js` avec `{ requestCredentials: true }`. Permet au navigateur de récupérer `META-INF/container.xml` puis chaque chapitre HTML individuellement pour un affichage instantané sans attendre le téléchargement complet du fichier.
+- **Téléchargement conteneur complet (fallback binaire)** :
+  ```http
+  GET /api/v1/library/{book_id}/epub
+  ```
+  Appelé avec `credentials: "include"`, renvoie le flux binaire de l'archive ePub complète (traité en `ArrayBuffer` par le client).
+
+#### Codes d'erreur spécifiques :
+- `403 Forbidden` (`BOOK_NOT_OWNED`) : L'utilisateur connecté n'a pas acheté ce titre.
+- `404 Not Found` (`EPUB_NOT_AVAILABLE`) : Le livre n'a pas encore de fichier ePub téléversé par l'administration.
+
+### 6.2 Sécurité et protection des contenus dans le Web Reader
+- **Filigrane acheteur dynamique** : Chaque chapitre servi intègre en bas de page un filigrane contenant l'email de l'acheteur (laissé visible).
+- **Protection anti-copie côté client** :
+  - Clic droit désactivé (`contextmenu.preventDefault()`).
+  - Sélection de texte bloquée (`user-select: none`).
+  - Impression désactivée (`@media print { body { display: none !important; } }`).
+
+### 6.3 Synchronisation de la progression de lecture
+
+- **Récupération du dernier point de lecture** :
+  ```http
+  GET /api/v1/library/{book_id}/progress
+  ```
+  Réponse (200 OK) :
+  ```json
+  {
+    "cfi": "epubcfi(/6/14[chap03]!/4/2/10/1:0)",
+    "percent": 42
+  }
+  ```
+  À l'ouverture du lecteur, `rendition.display(cfi)` repositionne immédiatement le lecteur sur la page exacte.
+- **Sauvegarde de l'avancement** :
+  ```http
+  PUT /api/v1/library/{book_id}/progress
+  Content-Type: application/json
+  ```
+  Payload :
+  ```json
+  {
+    "cfi": "epubcfi(/6/14[chap03]!/4/2/14/1:0)",
+    "percent": 45
+  }
+  ```
+  Déclenché de manière throttlée (au plus toutes les 3 secondes) sur l'événement `rendition.on("relocated")`.
+- **Affichage dans la bibliothèque** : L'endpoint `GET /api/v1/library` renvoie également `progress_percent` pour afficher le pourcentage d'avancement directement sur les fiches de livres de l'acheteur.
+
