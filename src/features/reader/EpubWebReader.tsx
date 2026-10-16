@@ -113,13 +113,69 @@ export function EpubWebReader({
     [book.id],
   )
 
+  const [retryTrigger, setRetryTrigger] = useState(0)
+
   useEffect(() => {
     let isMounted = true
     let renditionInstance: any = null
     let bookInstance: any = null
 
+    function parseEpubError(err: any): {
+      type: "BOOK_NOT_OWNED" | "EPUB_NOT_AVAILABLE" | "GENERIC"
+      message: string
+    } {
+      const status =
+        err?.status ||
+        (err?.response && typeof err.response === "object" && err.response.status) ||
+        (typeof err?.message === "string" && err.message.includes("403") ? 403 : undefined) ||
+        (typeof err?.message === "string" && err.message.includes("404") ? 404 : undefined)
+
+      const rawMsg = String(err?.message || err?.response || "")
+      const is403 =
+        status === 403 ||
+        rawMsg.includes("403") ||
+        rawMsg.includes("BOOK_NOT_OWNED") ||
+        rawMsg.toLowerCase().includes("forbidden")
+
+      const is404 =
+        status === 404 ||
+        rawMsg.includes("404") ||
+        rawMsg.includes("EPUB_NOT_AVAILABLE") ||
+        rawMsg.toLowerCase().includes("not found")
+
+      const isTimeout =
+        err?.isTimeout ||
+        rawMsg.includes("STREAM_TIMEOUT") ||
+        rawMsg.includes("TIMEOUT")
+
+      if (is403) {
+        return {
+          type: "BOOK_NOT_OWNED",
+          message: "Vous ne possédez pas ce livre dans votre bibliothèque.",
+        }
+      }
+
+      if (is404) {
+        return {
+          type: "EPUB_NOT_AVAILABLE",
+          message: "Le fichier ePub de ce titre est en cours de préparation ou non disponible.",
+        }
+      }
+
+      if (isTimeout) {
+        return {
+          type: "GENERIC",
+          message: "Délai d'attente dépassé lors de la connexion au livre numérique. Veuillez réessayer.",
+        }
+      }
+
+      return {
+        type: "GENERIC",
+        message: err?.message || "Impossible de charger le fichier ePub. Veuillez vérifier votre connexion.",
+      }
+    }
+
     async function initEpub() {
-      if (!viewerRef.current) return
       setLoading(true)
       setErrorType(null)
       setErrorMessage(null)
@@ -142,20 +198,59 @@ export function EpubWebReader({
         } catch {}
 
         // 2. Tenter la lecture chapitre par chapitre via /files/
-        setLoadingStatus("Chargement des chapitres ePub...")
+        setLoadingStatus("Connexion aux chapitres du livre...")
         const filesUrl = `${API_BASE_URL}/api/v1/library/${book.id}/files/`
         let loadedViaStream = false
 
+        // Options requises pour epub.js : credentials + header ngrok pour contourner l'interstitiel
+        const epubStreamOptions = {
+          requestCredentials: true,
+          requestHeaders: {
+            "ngrok-skip-browser-warning": "true",
+          },
+        }
+
         try {
-          bookInstance = ePub(filesUrl, { requestCredentials: true })
-          await Promise.race([
-            bookInstance.ready,
-            new Promise((_, reject) =>
-              setTimeout(() => reject(new Error("STREAM_TIMEOUT")), 4000),
-            ),
-          ])
+          bookInstance = ePub(filesUrl, epubStreamOptions)
+          // Attacher un catch direct sur ready pour éviter toute unhandled rejection
+          bookInstance.ready.catch((e: any) => {
+            console.warn("[EpubWebReader] bookInstance.ready streaming catch:", e)
+          })
+
+          let timeoutId: NodeJS.Timeout
+          const streamTimeoutPromise = new Promise((_, reject) => {
+            timeoutId = setTimeout(() => {
+              const err: any = new Error("STREAM_TIMEOUT")
+              err.isTimeout = true
+              reject(err)
+            }, 8000)
+          })
+
+          await Promise.race([bookInstance.ready, streamTimeoutPromise]).finally(() => {
+            clearTimeout(timeoutId)
+          })
+
           loadedViaStream = true
-        } catch {
+        } catch (streamErr: any) {
+          console.warn("[EpubWebReader] Échec du streaming direct:", streamErr)
+          const parsed = parseEpubError(streamErr)
+
+          // Si c'est 403 ou 404, on s'arrête immédiatement sans fallback inutile
+          if (parsed.type === "BOOK_NOT_OWNED" || parsed.type === "EPUB_NOT_AVAILABLE") {
+            if (isMounted) {
+              setErrorType(parsed.type)
+              setErrorMessage(parsed.message)
+              setLoading(false)
+            }
+            return
+          }
+
+          if (bookInstance) {
+            try {
+              bookInstance.destroy()
+            } catch {}
+            bookInstance = null
+          }
           loadedViaStream = false
         }
 
@@ -163,22 +258,43 @@ export function EpubWebReader({
         if (!loadedViaStream) {
           setLoadingStatus("Téléchargement sécurisé de l'e-book...")
           const epubUrl = `${API_BASE_URL}/api/v1/library/${book.id}/epub`
-          const response = await fetch(epubUrl, {
-            credentials: "include",
-            headers: createApiHeaders(),
-          })
+
+          const controller = new AbortController()
+          const fetchTimeout = setTimeout(() => controller.abort(), 12000)
+
+          let response: Response
+          try {
+            response = await fetch(epubUrl, {
+              credentials: "include",
+              headers: createApiHeaders(),
+              signal: controller.signal,
+            })
+          } catch (fetchErr: any) {
+            clearTimeout(fetchTimeout)
+            if (fetchErr?.name === "AbortError") {
+              const err: any = new Error("TIMEOUT")
+              err.isTimeout = true
+              throw err
+            }
+            throw fetchErr
+          }
+          clearTimeout(fetchTimeout)
 
           if (!response.ok) {
             if (response.status === 403) {
-              setErrorType("BOOK_NOT_OWNED")
-              setErrorMessage("Vous ne possédez pas ce livre dans votre bibliothèque.")
-              setLoading(false)
+              if (isMounted) {
+                setErrorType("BOOK_NOT_OWNED")
+                setErrorMessage("Vous ne possédez pas ce livre dans votre bibliothèque.")
+                setLoading(false)
+              }
               return
             }
             if (response.status === 404) {
-              setErrorType("EPUB_NOT_AVAILABLE")
-              setErrorMessage("Le fichier ePub de ce titre est en cours de préparation.")
-              setLoading(false)
+              if (isMounted) {
+                setErrorType("EPUB_NOT_AVAILABLE")
+                setErrorMessage("Le fichier ePub de ce titre est en cours de préparation ou non disponible.")
+                setLoading(false)
+              }
               return
             }
             throw new Error(`Erreur serveur (${response.status})`)
@@ -186,10 +302,31 @@ export function EpubWebReader({
 
           const arrayBuffer = await response.arrayBuffer()
           bookInstance = ePub(arrayBuffer)
-          await bookInstance.ready
+          bookInstance.ready.catch((e: any) => {
+            console.warn("[EpubWebReader] fallback ready catch:", e)
+          })
+
+          let parseTimeoutId: NodeJS.Timeout
+          const parseTimeoutPromise = new Promise((_, reject) => {
+            parseTimeoutId = setTimeout(() => {
+              const err: any = new Error("Délai de traitement du fichier ePub dépassé.")
+              err.isTimeout = true
+              reject(err)
+            }, 10000)
+          })
+
+          await Promise.race([bookInstance.ready, parseTimeoutPromise]).finally(() => {
+            clearTimeout(parseTimeoutId)
+          })
         }
 
-        if (!isMounted || !viewerRef.current) return
+        if (!isMounted) return
+
+        // Attendre que le conteneur DOM soit disponible
+        if (!viewerRef.current) {
+          await new Promise((r) => setTimeout(r, 60))
+        }
+        if (!viewerRef.current || !isMounted) return
 
         bookInstanceRef.current = bookInstance
 
@@ -199,7 +336,9 @@ export function EpubWebReader({
           if (nav && nav.toc) {
             setToc(nav.toc)
           }
-        } catch {}
+        } catch (navErr) {
+          console.warn("[EpubWebReader] Erreur extraction TOC:", navErr)
+        }
 
         // 5. Rendu du livre dans le conteneur DOM
         viewerRef.current.innerHTML = ""
@@ -274,6 +413,7 @@ export function EpubWebReader({
         })
 
         // 9. Afficher le livre (au CFI sauvegardé ou au début)
+        setLoadingStatus("Affichage des pages...")
         if (savedCfi) {
           await renditionInstance.display(savedCfi)
         } else {
@@ -287,11 +427,9 @@ export function EpubWebReader({
         console.error("[EpubWebReader] Erreur de chargement:", err)
         if (isMounted) {
           setLoading(false)
-          setErrorType("GENERIC")
-          setErrorMessage(
-            err?.message ||
-              "Impossible de charger le fichier ePub. Veuillez vérifier votre connexion.",
-          )
+          const parsed = parseEpubError(err)
+          setErrorType(parsed.type)
+          setErrorMessage(parsed.message)
         }
       }
     }
@@ -311,7 +449,7 @@ export function EpubWebReader({
         } catch {}
       }
     }
-  }, [book.id])
+  }, [book.id, retryTrigger])
 
   // Mise à jour réactive du thème
   useEffect(() => {
@@ -389,6 +527,18 @@ export function EpubWebReader({
           <Button variant="primary" onClick={onClose}>
             Retour à la bibliothèque
           </Button>
+          {errorType === "GENERIC" && (
+            <Button
+              variant="neutral"
+              onClick={() => {
+                setErrorType(null)
+                setErrorMessage(null)
+                setRetryTrigger((v) => v + 1)
+              }}
+            >
+              Réessayer
+            </Button>
+          )}
         </div>
       </div>
     )
@@ -503,42 +653,52 @@ export function EpubWebReader({
 
       {/* Contenu principal de lecture */}
       <main className="flex-1 w-full max-w-[1020px] mx-auto flex flex-col relative px-md md:px-xl py-lg">
-        {loading ? (
-          <div className="flex-1 flex flex-col items-center justify-center p-xl text-center">
-            <Loader2 className="w-10 h-10 text-brand-primary animate-spin mb-md" />
-            <p className="text-label-sm font-semibold text-text-primary mb-xs">
-              {loadingStatus}
-            </p>
-            <p className="text-video-title text-text-secondary">
-              Mise en page conforme de votre e-book...
-            </p>
-          </div>
-        ) : (
-          <div className="flex-1 w-full min-h-[70vh] flex flex-col relative">
-            {/* Zone de rendu epub.js */}
+        <div className="flex-1 w-full min-h-[70vh] flex flex-col relative">
+          {/* Overlay de chargement */}
+          {loading && (
             <div
-              ref={viewerRef}
-              className="flex-1 w-full h-full min-h-[65vh] overflow-hidden"
-              style={{ minHeight: "calc(100vh - 160px)" }}
-            />
+              className="absolute inset-0 z-20 flex flex-col items-center justify-center p-xl text-center backdrop-blur-xs transition-opacity duration-300"
+              style={{ backgroundColor: themeColors.bg }}
+            >
+              <Loader2 className="w-10 h-10 text-brand-primary animate-spin mb-md" />
+              <p className="text-label-sm font-semibold text-text-primary mb-xs">
+                {loadingStatus}
+              </p>
+              <p className="text-video-title text-text-secondary">
+                Mise en page conforme de votre e-book...
+              </p>
+            </div>
+          )}
 
-            {/* Boutons de navigation flottants latéraux */}
-            <button
-              onClick={handlePrev}
-              aria-label="Page précédente"
-              className="absolute left-0 top-1/2 -translate-y-1/2 p-md rounded-corner-full bg-[#1a0f0c]/60 text-white hover:bg-[#1a0f0c] transition-colors cursor-pointer shadow-md opacity-40 hover:opacity-100 hidden sm:flex items-center justify-center"
-            >
-              <ChevronLeft className="w-6 h-6" />
-            </button>
-            <button
-              onClick={handleNext}
-              aria-label="Page suivante"
-              className="absolute right-0 top-1/2 -translate-y-1/2 p-md rounded-corner-full bg-[#1a0f0c]/60 text-white hover:bg-[#1a0f0c] transition-colors cursor-pointer shadow-md opacity-40 hover:opacity-100 hidden sm:flex items-center justify-center"
-            >
-              <ChevronRight className="w-6 h-6" />
-            </button>
-          </div>
-        )}
+          {/* Zone de rendu epub.js (TOUJOURS DANS LE DOM) */}
+          <div
+            ref={viewerRef}
+            className={`flex-1 w-full h-full min-h-[65vh] overflow-hidden transition-opacity duration-300 ${
+              loading ? "opacity-0 pointer-events-none" : "opacity-100"
+            }`}
+            style={{ minHeight: "calc(100vh - 160px)" }}
+          />
+
+          {!loading && (
+            <>
+              {/* Boutons de navigation flottants latéraux */}
+              <button
+                onClick={handlePrev}
+                aria-label="Page précédente"
+                className="absolute left-0 top-1/2 -translate-y-1/2 p-md rounded-corner-full bg-[#1a0f0c]/60 text-white hover:bg-[#1a0f0c] transition-colors cursor-pointer shadow-md opacity-40 hover:opacity-100 hidden sm:flex items-center justify-center z-10"
+              >
+                <ChevronLeft className="w-6 h-6" />
+              </button>
+              <button
+                onClick={handleNext}
+                aria-label="Page suivante"
+                className="absolute right-0 top-1/2 -translate-y-1/2 p-md rounded-corner-full bg-[#1a0f0c]/60 text-white hover:bg-[#1a0f0c] transition-colors cursor-pointer shadow-md opacity-40 hover:opacity-100 hidden sm:flex items-center justify-center z-10"
+              >
+                <ChevronRight className="w-6 h-6" />
+              </button>
+            </>
+          )}
+        </div>
       </main>
 
       {/* Barre inférieure de progression et filigrane acheteur */}
