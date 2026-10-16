@@ -202,8 +202,33 @@ export function EpubWebReader({
         const filesUrl = `${API_BASE_URL}/api/v1/library/${book.id}/files/`
         let loadedViaStream = false
 
+        // Obtenir le request par défaut d'epubjs pour envelopper tous les appels
+        const dummyInstance = (ePub as any)()
+        const defaultEpubRequest = dummyInstance.request
+        try {
+          dummyInstance.destroy()
+        } catch {}
+
+        const customEpubRequest = (
+          url: string,
+          type?: any,
+          _withCredentials?: boolean,
+          headers?: Record<string, string>,
+        ) => {
+          let targetUrl = url
+          if (targetUrl.includes("ngrok-free.dev") && !targetUrl.includes("ngrok-skip-browser-warning")) {
+            targetUrl += (targetUrl.includes("?") ? "&" : "?") + "ngrok-skip-browser-warning=true"
+          }
+          const mergedHeaders: Record<string, string> = {
+            ...(headers || {}),
+            "ngrok-skip-browser-warning": "true",
+          }
+          return defaultEpubRequest(targetUrl, type, true, mergedHeaders)
+        }
+
         // Options requises pour epub.js : credentials + header ngrok pour contourner l'interstitiel
         const epubStreamOptions = {
+          requestMethod: customEpubRequest,
           requestCredentials: true,
           requestHeaders: {
             "ngrok-skip-browser-warning": "true",
@@ -212,6 +237,9 @@ export function EpubWebReader({
 
         try {
           bookInstance = ePub(filesUrl, epubStreamOptions)
+          // Forcer également sur l'instance au cas où epubjs redéfinit bookInstance.request
+          bookInstance.request = customEpubRequest
+
           // Attacher un catch direct sur ready pour éviter toute unhandled rejection
           bookInstance.ready.catch((e: any) => {
             console.warn("[EpubWebReader] bookInstance.ready streaming catch:", e)
@@ -341,6 +369,25 @@ export function EpubWebReader({
         }
 
         // 5. Rendu du livre dans le conteneur DOM
+        // Pré-injection de la balise <base> dans le HTML sérialisé pour que les chemins relatifs
+        // se résolvent vers les fichiers du livre et non vers l'origine du frontend Next.js (/reader/...)
+        if (bookInstance.spine && bookInstance.spine.hooks && bookInstance.spine.hooks.serialize) {
+          bookInstance.spine.hooks.serialize.register((output: string, section: any) => {
+            let modified = output
+            const sectionUrl = section?.url || ""
+            const baseUrl = sectionUrl.substring(0, sectionUrl.lastIndexOf("/") + 1)
+            if (baseUrl && !modified.includes("<base ")) {
+              const baseTag = `<base href="${baseUrl}"/>`
+              if (modified.includes("<head>")) {
+                modified = modified.replace("<head>", `<head>${baseTag}`)
+              } else if (modified.includes("<head ")) {
+                modified = modified.replace(/<head[^>]*>/, `$&${baseTag}`)
+              }
+            }
+            return modified
+          })
+        }
+
         viewerRef.current.innerHTML = ""
         renditionInstance = bookInstance.renderTo(viewerRef.current, {
           width: "100%",
@@ -351,7 +398,7 @@ export function EpubWebReader({
         renditionRef.current = renditionInstance
 
         // 6. Sécurité & Protections anti-copie à l'intérieur du conteneur
-        renditionInstance.hooks.content.register((contents: any) => {
+        renditionInstance.hooks.content.register(async (contents: any) => {
           const doc = contents?.document
           if (!doc) return
 
@@ -368,6 +415,43 @@ export function EpubWebReader({
           const printStyle = doc.createElement("style")
           printStyle.textContent = "@media print { body { display: none !important; } }"
           doc.head?.appendChild(printStyle)
+
+          // Résoudre et injecter en inline les feuilles de style externes
+          // pour éviter tout blocage par l'interstitiel ngrok ou CORS dans l'iframe
+          const links = Array.from(doc.querySelectorAll("link[rel='stylesheet']")) as HTMLLinkElement[]
+          for (const link of links) {
+            const rawHref = link.getAttribute("href")
+            if (!rawHref || rawHref.startsWith("data:") || rawHref.startsWith("blob:")) continue
+            try {
+              let cssUrl = link.href
+              if (cssUrl.includes("ngrok-free.dev") && !cssUrl.includes("ngrok-skip-browser-warning")) {
+                cssUrl += (cssUrl.includes("?") ? "&" : "?") + "ngrok-skip-browser-warning=true"
+              }
+              const res = await fetch(cssUrl, {
+                credentials: "include",
+                headers: createApiHeaders(),
+              })
+              if (res.ok) {
+                const cssText = await res.text()
+                const inlineStyle = doc.createElement("style")
+                inlineStyle.textContent = cssText
+                doc.head?.appendChild(inlineStyle)
+                link.remove()
+              }
+            } catch (cssErr) {
+              console.warn("[EpubWebReader] Erreur inline CSS:", cssErr)
+            }
+          }
+
+          // Ajuster les URLs des images pour contourner l'interstitiel ngrok
+          const images = Array.from(doc.querySelectorAll("img")) as HTMLImageElement[]
+          for (const img of images) {
+            const src = img.getAttribute("src")
+            if (!src || src.startsWith("data:") || src.startsWith("blob:")) continue
+            if (img.src.includes("ngrok-free.dev") && !img.src.includes("ngrok-skip-browser-warning")) {
+              img.src += (img.src.includes("?") ? "&" : "?") + "ngrok-skip-browser-warning=true"
+            }
+          }
         })
 
         // 7. Thèmes & Typographie
@@ -415,7 +499,12 @@ export function EpubWebReader({
         // 9. Afficher le livre (au CFI sauvegardé ou au début)
         setLoadingStatus("Affichage des pages...")
         if (savedCfi) {
-          await renditionInstance.display(savedCfi)
+          try {
+            await renditionInstance.display(savedCfi)
+          } catch (cfiErr) {
+            console.warn("[EpubWebReader] Reprise sur savedCfi échouée, ouverture au début:", cfiErr)
+            await renditionInstance.display()
+          }
         } else {
           await renditionInstance.display()
         }
