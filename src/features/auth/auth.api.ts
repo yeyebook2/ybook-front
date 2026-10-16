@@ -226,27 +226,40 @@ export async function refreshSession(): Promise<boolean> {
   }
 }
 
-export async function getCurrentUser(): Promise<AuthUser | null> {
-  try {
-    const payload = await request<BackendAuthPayload>("/auth/me", {
-      method: "GET",
-    })
-    const user = normalizeUser(payload.user) ?? null
-    saveCachedUser(user)
-    return user
-  } catch (err) {
-    if (err instanceof ApiError && (err.code === "SESSION_EXPIRED" || err.status === 401)) {
-      saveCachedUser(null)
-    } else if (isNetworkError(err)) {
-      return getCachedUser()
-    } else {
-      saveCachedUser(null)
-    }
-    return null
+let inFlightCurrentUserPromise: Promise<AuthUser | null> | null = null
+
+export async function getCurrentUser(force = false): Promise<AuthUser | null> {
+  if (inFlightCurrentUserPromise && !force) {
+    return inFlightCurrentUserPromise
   }
+  inFlightCurrentUserPromise = (async () => {
+    try {
+      const payload = await request<BackendAuthPayload>("/auth/me", {
+        method: "GET",
+      })
+      const user = normalizeUser(payload.user) ?? null
+      saveCachedUser(user)
+      return user
+    } catch (err) {
+      if (err instanceof ApiError && (err.code === "SESSION_EXPIRED" || err.status === 401)) {
+        saveCachedUser(null)
+      } else if (isNetworkError(err)) {
+        return getCachedUser()
+      } else {
+        saveCachedUser(null)
+      }
+      return null
+    } finally {
+      setTimeout(() => {
+        inFlightCurrentUserPromise = null
+      }, 500)
+    }
+  })()
+  return inFlightCurrentUserPromise
 }
 
 export async function logout(): Promise<void> {
+  inFlightCurrentUserPromise = null
   saveCachedUser(null)
   try {
     await request<{ success?: boolean }>("/auth/logout", { method: "POST" })

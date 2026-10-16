@@ -153,6 +153,7 @@ import {
   UploadCloud,
   Image as ImageIcon,
   Info,
+  Search,
 } from "lucide-react"
 
 export type View = "home" | "catalog" | "details" | "checkout" | "confirmation" | "library" | "reader" | "admin" | "login" | "register" | "dashboard"
@@ -309,7 +310,10 @@ export default function App({
     [],
   )
 
+  const isRefreshingLibraryRef = useRef(false)
   const refreshLibrary = useCallback(async () => {
+    if (isRefreshingLibraryRef.current) return
+    isRefreshingLibraryRef.current = true
     try {
       const items = await getLibraryItems()
       if (items && items.length > 0) {
@@ -332,13 +336,12 @@ export default function App({
             chapters: [],
           })),
         )
-      } else {
-        const ids = await getLibraryBookIds()
-        if (ids && ids.length > 0) {
-          setLibrary((prev) => Array.from(new Set([...prev, ...ids])))
-        }
       }
-    } catch {}
+    } catch (err) {
+      console.warn("[YéYéBook] Erreur chargement bibliothèque:", err)
+    } finally {
+      isRefreshingLibraryRef.current = false
+    }
   }, [])
 
   const selectedBook = useMemo(
@@ -3327,50 +3330,56 @@ function AdminView({
   const [creating, setCreating] = useState(false)
   const [catalogQuery, setCatalogQuery] = useState("")
   const [orderFilter, setOrderFilter] = useState<"all" | OrderStatus>("all")
+  const [orderSearch, setOrderSearch] = useState("")
+  const [orderPage, setOrderPage] = useState(1)
+  const [ordersLoading, setOrdersLoading] = useState(false)
+  const [ordersTotal, setOrdersTotal] = useState(0)
 
   // Données synchronisées en temps réel depuis l'API Backend
   const [apiStats, setApiStats] = useState<AdminStats | null>(null)
   const [apiOrders, setApiOrders] = useState<Order[]>([])
   const [loadingStats, setLoadingStats] = useState(false)
 
+  const mapOrder = (o: any): Order => {
+    const orderItems: CartItem[] = (o.items || []).map((it: any) => ({
+      bookId: it.book_id,
+      quantity: it.quantity,
+      selected: true,
+    }))
+    return {
+      id: o.id,
+      customer: o.customer_name || o.customer_email || "Client",
+      email: o.customer_email,
+      phone: o.customer_phone || "",
+      provider: o.provider || "fedapay",
+      items: orderItems,
+      total: o.total_amount ?? o.total ?? 0,
+      date: o.created_at
+        ? new Date(o.created_at).toLocaleDateString("fr-FR", {
+            day: "2-digit",
+            month: "short",
+            year: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+          })
+        : "",
+      status: o.status as OrderStatus,
+    }
+  }
+
   const refreshStatsAndOrders = useCallback(async () => {
     setLoadingStats(true)
     try {
       const [statsData, ordersData] = await Promise.all([
         getAdminStatsApi(),
-        getAdminOrdersApi({ limit: 100 }),
+        getAdminOrdersApi({ limit: 10 }),
       ])
       if (statsData) {
         setApiStats(statsData)
       }
       if (ordersData && ordersData.items) {
-        const mapped: Order[] = ordersData.items.map((o) => {
-          const orderItems: CartItem[] = (o.items || []).map((it) => ({
-            bookId: it.book_id,
-            quantity: it.quantity,
-            selected: true,
-          }))
-          return {
-            id: o.id,
-            customer: o.customer_name || o.customer_email || "Client",
-            email: o.customer_email,
-            phone: o.customer_phone || "",
-            provider: o.provider || "fedapay",
-            items: orderItems,
-            total: o.total_amount ?? 0,
-            date: o.created_at
-              ? new Date(o.created_at).toLocaleDateString("fr-FR", {
-                  day: "2-digit",
-                  month: "short",
-                  year: "numeric",
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })
-              : "",
-            status: o.status as OrderStatus,
-          }
-        })
-        setApiOrders(mapped)
+        setApiOrders(ordersData.items.map(mapOrder))
+        setOrdersTotal(ordersData.total)
       }
     } catch (err) {
       console.warn("[YéYéBook Admin] Erreur lors du chargement des statistiques/commandes:", err)
@@ -3379,9 +3388,35 @@ function AdminView({
     }
   }, [])
 
+  const fetchOrders = useCallback(async (filter: string, search: string, page: number) => {
+    setOrdersLoading(true)
+    try {
+      const ordersData = await getAdminOrdersApi({
+        status: filter,
+        search: search.trim() || undefined,
+        page,
+        limit: 50,
+      })
+      if (ordersData && ordersData.items) {
+        setApiOrders(ordersData.items.map(mapOrder))
+        setOrdersTotal(ordersData.total)
+      }
+    } catch (err) {
+      console.warn("[YéYéBook Admin] Erreur chargement commandes:", err)
+    } finally {
+      setOrdersLoading(false)
+    }
+  }, [])
+
   useEffect(() => {
     void refreshStatsAndOrders()
   }, [refreshStatsAndOrders])
+
+  useEffect(() => {
+    if (tab === "orders") {
+      void fetchOrders(orderFilter, orderSearch, orderPage)
+    }
+  }, [tab, orderFilter, orderSearch, orderPage, fetchOrders])
 
   const handleStatusChange = async (id: string, status: OrderStatus) => {
     // Mettre à jour immédiatement l'état local
@@ -3389,8 +3424,11 @@ function AdminView({
     try {
       await onSetOrderStatus(id, status)
     } finally {
-      // Rappeler /admin/stats après le changement de statut comme requis par le backend
-      await refreshStatsAndOrders()
+      // Rappeler /admin/stats et fetchOrders après le changement de statut comme requis par le backend
+      await Promise.all([
+        refreshStatsAndOrders(),
+        fetchOrders(orderFilter, orderSearch, orderPage),
+      ])
     }
   }
 
@@ -3405,13 +3443,21 @@ function AdminView({
     )
   }, [books, catalogQuery])
 
-  const visibleOrders = useMemo(
-    () =>
-      orderFilter === "all"
-        ? currentOrders
-        : currentOrders.filter((o) => o.status === orderFilter),
-    [currentOrders, orderFilter],
-  )
+  const visibleOrders = useMemo(() => {
+    if (apiOrders.length > 0) return apiOrders
+    return orders
+      .filter((o) => (orderFilter === "all" ? true : o.status === orderFilter))
+      .filter((o) => {
+        if (!orderSearch.trim()) return true
+        const q = orderSearch.toLowerCase()
+        return (
+          o.customer.toLowerCase().includes(q) ||
+          (o.email && o.email.toLowerCase().includes(q)) ||
+          o.phone.toLowerCase().includes(q) ||
+          o.id.toLowerCase().includes(q)
+        )
+      })
+  }, [apiOrders, orders, orderFilter, orderSearch])
 
   const revenue = apiStats
     ? apiStats.revenue_total
@@ -4040,148 +4086,216 @@ function AdminView({
           {}
           {tab === "orders" && (
             <div className="flex flex-col gap-lg max-w-[1100px]">
-              <div
-                className="flex flex-wrap gap-sm"
-                role="group"
-                aria-label="Filtrer les commandes par statut"
-              >
-                {([
-                  { id: "all", label: "Toutes" },
-                  { id: "paid", label: "Payées" },
-                  { id: "pending", label: "En attente" },
-                  { id: "cancelled", label: "Expirées / Annulées" },
-                  { id: "refunded", label: "Remboursées" },
-                ] as const).map((f) => {
-                  const active = orderFilter === f.id
-                  const count =
-                    f.id === "all"
-                      ? currentOrders.length
-                      : currentOrders.filter((o) => o.status === f.id).length
-                  return (
-                    <button
-                      key={f.id}
-                      onClick={() => setOrderFilter(f.id)}
-                      aria-pressed={active}
-                      className={`inline-flex items-center gap-xs px-lg py-sm rounded-corner-full text-label-sm font-medium border transition-all cursor-pointer ${
-                        active
-                          ? "bg-brand-primary text-on-brand border-brand-primary"
-                          : "bg-surface-bg text-text-secondary border-border-secondary hover:border-brand-primary hover:text-text-primary"
-                      }`}
-                    >
-                      {f.label}
-                      <span
-                        className={`text-video-title ${
-                          active ? "text-on-brand/80" : "text-text-tertiary"
+              <div className="flex flex-wrap items-center justify-between gap-md">
+                <div
+                  className="flex flex-wrap gap-sm"
+                  role="group"
+                  aria-label="Filtrer les commandes par statut"
+                >
+                  {([
+                    { id: "all", label: "Toutes" },
+                    { id: "paid", label: "Payées" },
+                    { id: "pending", label: "En attente" },
+                    { id: "cancelled", label: "Expirées / Annulées" },
+                    { id: "refunded", label: "Remboursées" },
+                  ] as const).map((f) => {
+                    const active = orderFilter === f.id
+                    const count =
+                      f.id === "all"
+                        ? (apiStats ? apiStats.orders_count : currentOrders.length)
+                        : f.id === "paid"
+                          ? (apiStats ? apiStats.orders_paid_count : currentOrders.filter((o) => o.status === "paid").length)
+                          : f.id === "pending"
+                            ? (apiStats ? apiStats.orders_pending_count : currentOrders.filter((o) => o.status === "pending").length)
+                            : f.id === "cancelled"
+                              ? (apiStats ? apiStats.orders_cancelled_count : currentOrders.filter((o) => o.status === "cancelled").length)
+                              : currentOrders.filter((o) => o.status === f.id).length
+                    return (
+                      <button
+                        key={f.id}
+                        onClick={() => {
+                          setOrderFilter(f.id)
+                          setOrderPage(1)
+                        }}
+                        aria-pressed={active}
+                        className={`inline-flex items-center gap-xs px-lg py-sm rounded-corner-full text-label-sm font-medium border transition-all cursor-pointer ${
+                          active
+                            ? "bg-brand-primary text-on-brand border-brand-primary"
+                            : "bg-surface-bg text-text-secondary border-border-secondary hover:border-brand-primary hover:text-text-primary"
                         }`}
                       >
-                        {count}
-                      </span>
-                    </button>
-                  )
-                })}
+                        {f.label}
+                        <span
+                          className={`text-video-title ${
+                            active ? "text-on-brand/80" : "text-text-tertiary"
+                          }`}
+                        >
+                          {count}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+
+                <div className="relative min-w-[240px] sm:w-[300px]">
+                  <Search
+                    className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-text-tertiary"
+                    aria-hidden="true"
+                  />
+                  <input
+                    type="search"
+                    value={orderSearch}
+                    onChange={(e) => {
+                      setOrderSearch(e.target.value)
+                      setOrderPage(1)
+                    }}
+                    placeholder="Rechercher (client, e-mail, tél, ID)..."
+                    aria-label="Rechercher dans les commandes"
+                    className="w-full pl-9 pr-3 py-1.5 text-label-sm rounded-corner-md bg-surface-bg border border-border-secondary text-text-primary placeholder:text-text-tertiary focus:border-brand-primary focus:outline-none transition-colors"
+                  />
+                </div>
               </div>
 
-              {visibleOrders.length === 0 ? (
+              {ordersLoading ? (
+                <div className="flex flex-col items-center justify-center gap-md py-4xl text-center rounded-corner-lg border border-border-secondary bg-surface-bg">
+                  <Loader2 className="w-7 h-7 text-brand-primary animate-spin" aria-hidden="true" />
+                  <p className="text-label-sm text-text-secondary">
+                    Chargement des commandes en direct depuis le serveur...
+                  </p>
+                </div>
+              ) : visibleOrders.length === 0 ? (
                 <div className="flex flex-col items-center justify-center gap-md py-4xl text-center rounded-corner-lg border border-dashed border-border-primary bg-surface-bg">
                   <ClipboardList
                     className="w-8 h-8 text-text-tertiary"
                     aria-hidden="true"
                   />
                   <p className="text-label-sm text-text-secondary">
-                    Aucune commande dans cette catégorie.
+                    {orderSearch.trim()
+                      ? `Aucune commande ne correspond à « ${orderSearch} »`
+                      : "Aucune commande dans cette catégorie."}
                   </p>
                 </div>
               ) : (
-                <div className="rounded-corner-lg bg-surface-bg border border-border-secondary overflow-hidden">
-                  <table className="w-full border-collapse">
-                    <caption className="sr-only">Liste des commandes</caption>
-                    <thead>
-                      <tr className="text-left text-video-title uppercase tracking-wide text-text-tertiary border-b border-border-secondary">
-                        <th scope="col" className="font-semibold px-xl py-md">
-                          Commande
-                        </th>
-                        <th
-                          scope="col"
-                          className="font-semibold px-lg py-md hidden md:table-cell"
-                        >
-                          Paiement
-                        </th>
-                        <th
-                          scope="col"
-                          className="font-semibold px-lg py-md hidden sm:table-cell"
-                        >
-                          Articles
-                        </th>
-                        <th scope="col" className="font-semibold px-lg py-md">
-                          Total
-                        </th>
-                        <th
-                          scope="col"
-                          className="font-semibold px-xl py-md text-right"
-                        >
-                          Statut
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {visibleOrders.map((o) => {
-                        const units = o.items.reduce(
-                          (n, it) => n + it.quantity,
-                          0,
-                        )
-                        return (
-                          <tr
-                            key={o.id}
-                            className="border-b border-border-secondary last:border-b-0 hover:bg-surface-secondary-bg transition-colors"
+                <div className="flex flex-col gap-md">
+                  <div className="rounded-corner-lg bg-surface-bg border border-border-secondary overflow-hidden">
+                    <table className="w-full border-collapse">
+                      <caption className="sr-only">Liste des commandes</caption>
+                      <thead>
+                        <tr className="text-left text-video-title uppercase tracking-wide text-text-tertiary border-b border-border-secondary">
+                          <th scope="col" className="font-semibold px-xl py-md">
+                            Commande
+                          </th>
+                          <th
+                            scope="col"
+                            className="font-semibold px-lg py-md hidden md:table-cell"
                           >
-                            <td className="px-xl py-md">
-                              <p className="text-label-sm font-semibold text-text-primary">
-                                {o.customer}
-                              </p>
-                              <p className="text-video-title text-text-tertiary">
-                                {o.id} · {o.date}
-                              </p>
-                            </td>
-                            <td className="px-lg py-md hidden md:table-cell">
-                              <p className="text-label-sm text-text-primary">
-                                {PROVIDER_LABELS[o.provider] ?? o.provider}
-                              </p>
-                              <p className="text-video-title text-text-tertiary">
-                                {o.phone}
-                              </p>
-                            </td>
-                            <td className="px-lg py-md hidden sm:table-cell text-label-sm text-text-secondary">
-                              {units}
-                            </td>
-                            <td className="px-lg py-md text-label-sm font-semibold text-text-primary whitespace-nowrap">
-                              {formatPrice(o.total)}
-                            </td>
-                            <td className="px-xl py-md">
-                              <div className="flex items-center justify-end gap-md">
-                                <StatusPill status={o.status} />
-                                <select
-                                  value={o.status}
-                                  onChange={(e) =>
-                                    void handleStatusChange(
-                                      o.id,
-                                      e.target.value as OrderStatus,
-                                    )
-                                  }
-                                  aria-label={`Changer le statut de la commande ${o.id}`}
-                                  className="text-video-title font-medium text-text-secondary bg-surface-secondary-bg border border-border-secondary rounded-corner-md px-sm py-xs cursor-pointer hover:border-brand-primary transition-colors"
-                                >
-                                  <option value="paid">Payée</option>
-                                  <option value="pending">En attente</option>
-                                  <option value="cancelled">Expirée / Annulée</option>
-                                  <option value="refunded">Remboursée</option>
-                                </select>
-                              </div>
-                            </td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
+                            Paiement
+                          </th>
+                          <th
+                            scope="col"
+                            className="font-semibold px-lg py-md hidden sm:table-cell"
+                          >
+                            Articles
+                          </th>
+                          <th scope="col" className="font-semibold px-lg py-md">
+                            Total
+                          </th>
+                          <th
+                            scope="col"
+                            className="font-semibold px-xl py-md text-right"
+                          >
+                            Statut
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {visibleOrders.map((o) => {
+                          const units = o.items.reduce(
+                            (n, it) => n + it.quantity,
+                            0,
+                          )
+                          return (
+                            <tr
+                              key={o.id}
+                              className="border-b border-border-secondary last:border-b-0 hover:bg-surface-secondary-bg transition-colors"
+                            >
+                              <td className="px-xl py-md">
+                                <p className="text-label-sm font-semibold text-text-primary">
+                                  {o.customer}
+                                </p>
+                                <p className="text-video-title text-text-tertiary">
+                                  {o.id} {o.date ? `· ${o.date}` : ""}
+                                </p>
+                                {o.email && (
+                                  <p className="text-video-title text-text-tertiary truncate max-w-[260px]">
+                                    {o.email}
+                                  </p>
+                                )}
+                              </td>
+                              <td className="px-lg py-md hidden md:table-cell">
+                                <p className="text-label-sm text-text-primary">
+                                  {PROVIDER_LABELS[o.provider] ?? o.provider}
+                                </p>
+                                <p className="text-video-title text-text-tertiary">
+                                  {o.phone || "—"}
+                                </p>
+                              </td>
+                              <td className="px-lg py-md hidden sm:table-cell text-label-sm text-text-secondary">
+                                {units} {units > 1 ? "titres" : "titre"}
+                              </td>
+                              <td className="px-lg py-md text-label-sm font-semibold text-text-primary whitespace-nowrap">
+                                {formatPrice(o.total)}
+                              </td>
+                              <td className="px-xl py-md">
+                                <div className="flex items-center justify-end gap-md">
+                                  <StatusPill status={o.status} />
+                                  <select
+                                    value={o.status}
+                                    onChange={(e) =>
+                                      void handleStatusChange(
+                                        o.id,
+                                        e.target.value as OrderStatus,
+                                      )
+                                    }
+                                    aria-label={`Changer le statut de la commande ${o.id}`}
+                                    className="text-video-title font-medium text-text-secondary bg-surface-secondary-bg border border-border-secondary rounded-corner-md px-sm py-xs cursor-pointer hover:border-brand-primary transition-colors"
+                                  >
+                                    <option value="paid">Payée</option>
+                                    <option value="pending">En attente</option>
+                                    <option value="cancelled">Expirée / Annulée</option>
+                                    <option value="refunded">Remboursée</option>
+                                  </select>
+                                </div>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {ordersTotal > 50 && (
+                    <div className="flex items-center justify-between px-sm py-xs text-video-title text-text-tertiary">
+                      <span>Total : {ordersTotal} commandes</span>
+                      <div className="flex items-center gap-sm">
+                        <button
+                          disabled={orderPage <= 1 || ordersLoading}
+                          onClick={() => setOrderPage((p) => Math.max(1, p - 1))}
+                          className="px-md py-xs rounded-corner-md border border-border-secondary text-label-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-surface-secondary-bg transition-colors"
+                        >
+                          Précédent
+                        </button>
+                        <span>Page {orderPage}</span>
+                        <button
+                          disabled={visibleOrders.length < 50 || ordersLoading}
+                          onClick={() => setOrderPage((p) => p + 1)}
+                          className="px-md py-xs rounded-corner-md border border-border-secondary text-label-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-surface-secondary-bg transition-colors"
+                        >
+                          Suivant
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

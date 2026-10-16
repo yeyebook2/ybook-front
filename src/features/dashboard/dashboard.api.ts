@@ -178,10 +178,13 @@ export async function getLibraryBookIds(): Promise<string[]> {
 
 export async function getLibraryItems(): Promise<DashboardBook[]> {
   try {
-    const response = await request<CollectionResponse<BackendLibraryItem>>(
+    const response = await request<any>(
       "/library?page=1&limit=100&sort_by=recent",
     )
-    return response.items.map(mapBook)
+    const list: BackendLibraryItem[] = Array.isArray(response)
+      ? response
+      : response?.items || response?.books || response?.data || []
+    return list.map(mapBook)
   } catch {
     return []
   }

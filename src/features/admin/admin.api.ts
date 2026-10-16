@@ -143,17 +143,25 @@ export async function getAdminOrdersApi(params?: {
 }): Promise<{ items: AdminOrder[]; total: number } | null> {
   try {
     const searchParams = new URLSearchParams()
-    if (params?.status) searchParams.set("status", params.status)
-    if (params?.search) searchParams.set("search", params.search)
+    if (params?.status && params.status !== "all") {
+      searchParams.set("status", params.status)
+    } else if (params?.status === "all") {
+      searchParams.set("status", "all")
+    }
+    if (params?.search?.trim()) searchParams.set("search", params.search.trim())
     if (params?.page) searchParams.set("page", String(params.page))
     if (params?.limit) searchParams.set("limit", String(params.limit))
 
     const query = searchParams.toString() ? `?${searchParams.toString()}` : ""
-    const res = await request<{ success: boolean; items: AdminOrder[]; total: number }>(
+    const res = await request<any>(
       `/orders${query}`,
       { method: "GET" },
     )
-    return { items: res.items, total: res.total }
+    const items: AdminOrder[] = Array.isArray(res)
+      ? res
+      : res?.items || res?.orders || res?.data || []
+    const total = typeof res?.total === "number" ? res.total : items.length
+    return { items, total }
   } catch (err) {
     console.warn("[YéYéBook Admin API] get orders endpoint non disponible:", err)
     return null

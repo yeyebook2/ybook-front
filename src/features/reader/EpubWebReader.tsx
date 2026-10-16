@@ -414,7 +414,11 @@ export function EpubWebReader({
             // 1. Supprimer <link rel="next"> et <link rel="prev"> pour empêcher le prefetch ORB sauvage du navigateur
             modified = modified.replace(/<link[^>]+rel=["\x27](next|prev)["\x27][^>]*\/?>/gi, "")
 
-            // 2. Extraire et inliner les feuilles de style CSS
+            // 2. Supprimer tout <script> pour éviter les erreurs sandbox about:srcdoc
+            modified = modified.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
+            modified = modified.replace(/<script\b[^>]*\/>/gi, "")
+
+            // 3. Extraire et inliner les feuilles de style CSS
             const linkMatches = Array.from(modified.matchAll(/<link[^>]+rel=["\x27]stylesheet["\x27][^>]*\/?>/gi))
             for (const match of linkMatches) {
               const fullTag = match[0]
@@ -434,7 +438,7 @@ export function EpubWebReader({
               }
             }
 
-            // 3. Réécrire les balises <img> relatives avec l'URL absolue + bypass ngrok
+            // 4. Réécrire les balises <img> relatives avec l'URL absolue + bypass ngrok
             modified = modified.replace(/<img([^>]+)src=["\x27]([^"\x27]+)["\x27]([^>]*)>/gi, (match, p1, src, p2) => {
               if (!src.startsWith("http") && !src.startsWith("data:") && !src.startsWith("blob:") && baseUrl) {
                 const fullImgUrl = `${baseUrl}${src}${baseUrl.includes("ngrok-free.dev") ? (baseUrl.includes("?") ? "&" : "?") + "ngrok-skip-browser-warning=true" : ""}`
@@ -443,7 +447,7 @@ export function EpubWebReader({
               return match
             })
 
-            // 4. Injecter <base href="..."> au tout début de <head> si absent
+            // 5. Injecter <base href="..."> au tout début de <head> si absent
             if (baseUrl && !modified.includes("<base ")) {
               const baseTag = `<base href="${baseUrl}"/>`
               if (modified.includes("<head>")) {
@@ -459,11 +463,12 @@ export function EpubWebReader({
         }
 
         viewerRef.current.innerHTML = ""
-        renditionInstance = bookInstance.renderTo(viewerRef.current, {
+        renditionInstance = bookInstance.renderTo("viewer", {
           width: "100%",
           height: "100%",
           spread: "none",
           flow: "paginated",
+          allowScriptedContent: true,
         })
         renditionRef.current = renditionInstance
 
@@ -475,16 +480,35 @@ export function EpubWebReader({
           // Bloquer le clic droit
           doc.addEventListener("contextmenu", (e: MouseEvent) => e.preventDefault())
 
-          // Bloquer la sélection de texte
+          // Bloquer la sélection de texte et l'impression dans le document
           if (doc.body) {
             doc.body.style.userSelect = "none"
             doc.body.style.webkitUserSelect = "none"
           }
 
-          // Bloquer l'impression
           const printStyle = doc.createElement("style")
-          printStyle.textContent = "@media print { body { display: none !important; } }"
+          printStyle.textContent = `
+            * {
+              -webkit-user-select: none !important;
+              -moz-user-select: none !important;
+              user-select: none !important;
+            }
+            @media print {
+              body, html { display: none !important; }
+            }
+          `
           doc.head?.appendChild(printStyle)
+
+          // Filigrane discret en bas de chaque chapitre (e-mail de l'acheteur)
+          if (doc.body) {
+            const buyerEmail = currentUser?.email || "Client YéYéBook"
+            const watermark = doc.createElement("div")
+            watermark.setAttribute("data-yeyebook-chapter-watermark", "true")
+            watermark.style.cssText =
+              "margin-top: 48px; padding-top: 14px; border-top: 1px dashed rgba(160, 160, 160, 0.35); text-align: center; font-size: 11px; color: rgba(140, 140, 140, 0.7); user-select: none; -webkit-user-select: none; pointer-events: none; font-family: sans-serif;"
+            watermark.textContent = `Exemplaire numérique sous licence YéYéBook — ${buyerEmail}`
+            doc.body.appendChild(watermark)
+          }
 
           // Résoudre et injecter en inline les feuilles de style externes
           // pour éviter tout blocage par l'interstitiel ngrok ou CORS dans l'iframe
@@ -709,8 +733,16 @@ export function EpubWebReader({
       style={{ backgroundColor: themeColors.bg }}
       onContextMenu={(e) => e.preventDefault()}
     >
-      {/* Styles de protection d'impression */}
-      <style dangerouslySetInnerHTML={{ __html: "@media print { body { display: none !important; } }" }} />
+      {/* Styles de protection d'impression et dimensions strictes du viewer */}
+      <style
+        dangerouslySetInnerHTML={{
+          __html: `
+            @media print { body, html { display: none !important; } }
+            #viewer { width: 100% !important; height: 80vh !important; position: relative; }
+            #viewer iframe { width: 100% !important; height: 100% !important; border: none !important; }
+          `,
+        }}
+      />
 
       {/* Barre supérieure du lecteur */}
       <header className="sticky top-0 z-40 bg-[#1a0f0c] text-white select-none">
@@ -831,11 +863,10 @@ export function EpubWebReader({
 
           {/* Zone de rendu epub.js (TOUJOURS DANS LE DOM) */}
           <div
+            id="viewer"
             ref={viewerRef}
-            className={`flex-1 w-full h-full min-h-[65vh] overflow-hidden transition-opacity duration-300 ${
-              loading ? "opacity-0 pointer-events-none" : "opacity-100"
-            }`}
-            style={{ minHeight: "calc(100vh - 160px)" }}
+            className="w-full relative overflow-hidden"
+            style={{ width: "100%", height: "80vh" }}
           />
 
           {!loading && (
