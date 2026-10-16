@@ -209,12 +209,45 @@ export function EpubWebReader({
           dummyInstance.destroy()
         } catch {}
 
+        const cssCache = new Map<string, string>()
+        async function fetchAndCacheCss(cssUrl: string): Promise<string> {
+          if (cssCache.has(cssUrl)) return cssCache.get(cssUrl)!
+          try {
+            let targetUrl = cssUrl
+            if (targetUrl.includes("ngrok-free.dev") && !targetUrl.includes("ngrok-skip-browser-warning")) {
+              targetUrl += (targetUrl.includes("?") ? "&" : "?") + "ngrok-skip-browser-warning=true"
+            }
+            const res = await fetch(targetUrl, {
+              credentials: "include",
+              headers: createApiHeaders(),
+            })
+            if (res.ok) {
+              const text = await res.text()
+              if (!text.trim().startsWith("<!DOCTYPE html>") && !text.trim().startsWith("<html")) {
+                cssCache.set(cssUrl, text)
+                return text
+              }
+            }
+          } catch {}
+          return ""
+        }
+
         const customEpubRequest = (
           url: string,
           type?: any,
           _withCredentials?: boolean,
           headers?: Record<string, string>,
         ) => {
+          // Intercepter com.apple.ibooks.display-options.xml pour éviter 404 & Erreur d'analyse XML dans la console
+          if (url.includes("com.apple.ibooks.display-options.xml")) {
+            const parser = new DOMParser()
+            const emptyXml = parser.parseFromString(
+              '<?xml version="1.0" encoding="UTF-8"?><display_options/>',
+              "application/xml",
+            )
+            return Promise.resolve(emptyXml)
+          }
+
           let targetUrl = url
           if (targetUrl.includes("ngrok-free.dev") && !targetUrl.includes("ngrok-skip-browser-warning")) {
             targetUrl += (targetUrl.includes("?") ? "&" : "?") + "ngrok-skip-browser-warning=true"
@@ -369,13 +402,48 @@ export function EpubWebReader({
         }
 
         // 5. Rendu du livre dans le conteneur DOM
-        // Pré-injection de la balise <base> dans le HTML sérialisé pour que les chemins relatifs
-        // se résolvent vers les fichiers du livre et non vers l'origine du frontend Next.js (/reader/...)
+        // Pré-injection de la balise <base> et inlining des styles dans le HTML sérialisé
+        // pour que le navigateur n'effectue aucun appel relatif vers l'origine Next.js (/reader/...)
+        // et n'effectue aucun prefetch sauvage (rel="next|prev") bloqué par ORB
         if (bookInstance.spine && bookInstance.spine.hooks && bookInstance.spine.hooks.serialize) {
-          bookInstance.spine.hooks.serialize.register((output: string, section: any) => {
-            let modified = output
+          bookInstance.spine.hooks.serialize.register(async (output: string, section: any) => {
+            let modified = output || ""
             const sectionUrl = section?.url || ""
             const baseUrl = sectionUrl.substring(0, sectionUrl.lastIndexOf("/") + 1)
+
+            // 1. Supprimer <link rel="next"> et <link rel="prev"> pour empêcher le prefetch ORB sauvage du navigateur
+            modified = modified.replace(/<link[^>]+rel=["\x27](next|prev)["\x27][^>]*\/?>/gi, "")
+
+            // 2. Extraire et inliner les feuilles de style CSS
+            const linkMatches = Array.from(modified.matchAll(/<link[^>]+rel=["\x27]stylesheet["\x27][^>]*\/?>/gi))
+            for (const match of linkMatches) {
+              const fullTag = match[0]
+              const hrefMatch = fullTag.match(/href=["\x27]([^"\x27]+)["\x27]/i)
+              if (hrefMatch && hrefMatch[1]) {
+                const href = hrefMatch[1]
+                if (!href.startsWith("data:") && !href.startsWith("blob:")) {
+                  const fullCssUrl = href.startsWith("http") ? href : `${baseUrl}${href}`
+                  const cssContent = await fetchAndCacheCss(fullCssUrl)
+                  if (cssContent) {
+                    modified = modified.replace(fullTag, `<style data-inlined="${href}">${cssContent}</style>`)
+                  } else {
+                    // Supprimer le lien externe non résolu pour éviter l'erreur MIME text/html sur Vercel
+                    modified = modified.replace(fullTag, "")
+                  }
+                }
+              }
+            }
+
+            // 3. Réécrire les balises <img> relatives avec l'URL absolue + bypass ngrok
+            modified = modified.replace(/<img([^>]+)src=["\x27]([^"\x27]+)["\x27]([^>]*)>/gi, (match, p1, src, p2) => {
+              if (!src.startsWith("http") && !src.startsWith("data:") && !src.startsWith("blob:") && baseUrl) {
+                const fullImgUrl = `${baseUrl}${src}${baseUrl.includes("ngrok-free.dev") ? (baseUrl.includes("?") ? "&" : "?") + "ngrok-skip-browser-warning=true" : ""}`
+                return `<img${p1}src="${fullImgUrl}"${p2}>`
+              }
+              return match
+            })
+
+            // 4. Injecter <base href="..."> au tout début de <head> si absent
             if (baseUrl && !modified.includes("<base ")) {
               const baseTag = `<base href="${baseUrl}"/>`
               if (modified.includes("<head>")) {
@@ -384,6 +452,8 @@ export function EpubWebReader({
                 modified = modified.replace(/<head[^>]*>/, `$&${baseTag}`)
               }
             }
+
+            section.output = modified
             return modified
           })
         }
