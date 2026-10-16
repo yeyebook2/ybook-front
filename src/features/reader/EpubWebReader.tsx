@@ -32,6 +32,94 @@ const API_BASE_URL = getPublicApiBaseUrl()
 
 export type ReaderTheme = "light" | "sepia" | "dark"
 
+export const THEME_CONFIG: Record<
+  ReaderTheme,
+  {
+    bg: string
+    text: string
+    sub: string
+    border: string
+    panel: string
+    link: string
+    font: string
+  }
+> = {
+  light: {
+    bg: "#fff6eb",
+    text: "#100908",
+    sub: "#6b615c",
+    border: "#c1b5ac40",
+    panel: "#fffdf9",
+    link: "#b84870",
+    font: "Georgia, Cambria, 'Times New Roman', Times, serif",
+  },
+  sepia: {
+    bg: "#f6ecd6",
+    text: "#432d16",
+    sub: "#8a7048",
+    border: "#432d1622",
+    panel: "#efe2c6",
+    link: "#8a4820",
+    font: "Georgia, Cambria, 'Times New Roman', Times, serif",
+  },
+  dark: {
+    bg: "#171015",
+    text: "#ece2e6",
+    sub: "#9a8890",
+    border: "#ffffff1a",
+    panel: "#241820",
+    link: "#e04070",
+    font: "Georgia, Cambria, 'Times New Roman', Times, serif",
+  },
+}
+
+function computeBookProgress(loc: any, bookObj: any): number {
+  if (!loc || !loc.start) return 0
+  const cfi = loc.start.cfi
+
+  // 1. Calcul précis via book.locations s'il a été généré
+  if (bookObj?.locations && cfi) {
+    try {
+      const totalLocs =
+        typeof bookObj.locations.length === "function"
+          ? bookObj.locations.length()
+          : (bookObj.locations.total || 0)
+      if (totalLocs > 0) {
+        const p = bookObj.locations.percentageFromCfi(cfi)
+        if (typeof p === "number" && !isNaN(p) && p >= 0) {
+          const norm = p > 1 ? p : p * 100
+          return Math.min(100, Math.max(0, Math.round(norm)))
+        }
+      }
+    } catch {}
+  }
+
+  // 2. Si epub.js a fourni un percentage direct > 0
+  if (
+    typeof loc.start.percentage === "number" &&
+    !isNaN(loc.start.percentage) &&
+    loc.start.percentage > 0
+  ) {
+    const raw = loc.start.percentage > 1 ? loc.start.percentage : loc.start.percentage * 100
+    return Math.min(100, Math.max(0, Math.round(raw)))
+  }
+
+  // 3. Fallback immédiat et dynamique basé sur la pagination de la spine
+  if (typeof loc.start.index === "number" && bookObj?.spine) {
+    const totalSections = bookObj.spine.items?.length || bookObj.spine.length || 1
+    const pageInSec = loc.start.displayed?.page || 1
+    const totalInSec = loc.start.displayed?.total || 1
+    const secFraction = totalInSec > 1 ? (pageInSec - 1) / totalInSec : 0
+    const rawProgress = ((loc.start.index + secFraction) / Math.max(1, totalSections)) * 100
+    const calculated = Math.min(100, Math.max(0, Math.round(rawProgress)))
+    if (calculated > 0) return calculated
+    if (loc.start.index > 0 || pageInSec > 1) return 1
+  }
+
+  if (loc.atEnd) return 100
+  return 0
+}
+
 interface TocItem {
   id: string
   label: string
@@ -70,35 +158,109 @@ export function EpubWebReader({
 
   // Préférences lecteur
   const [theme, setTheme] = useState<ReaderTheme>("light")
+  const currentThemeRef = useRef<ReaderTheme>(theme)
+  currentThemeRef.current = theme
+
   const [fontSize, setFontSize] = useState<number>(20)
   const [lineHeight, setLineHeight] = useState<number>(1.75)
 
   // Throttling de la sauvegarde de progression
   const lastSavedRef = useRef<{ cfi: string; time: number }>({ cfi: "", time: 0 })
 
-  const themeColors = {
-    light: {
-      bg: "#fff6eb",
-      text: "#100908",
-      sub: "#6b615c",
-      border: "#c1b5ac40",
-      panel: "#fffdf9",
+  const themeColors = THEME_CONFIG[theme]
+
+  const applyThemeToDocument = useCallback(
+    (doc: Document, activeTheme: ReaderTheme) => {
+      if (!doc) return
+      const cfg = THEME_CONFIG[activeTheme]
+
+      // Supprimer tous les anciens tags de style d'autres thèmes injectés par epub.js
+      const allThemeStyles = doc.querySelectorAll("style[id^='epubjs-inserted-css-']")
+      allThemeStyles.forEach((s) => {
+        if (s.id !== `epubjs-inserted-css-${activeTheme}`) {
+          try {
+            ;(s as HTMLStyleElement).disabled = true
+          } catch {}
+          s.remove()
+        }
+      })
+
+      // Créer ou écraser le style de thème prioritaire YéYéBook
+      let styleTag = doc.getElementById("yeyebook-theme-style") as HTMLStyleElement | null
+      if (!styleTag) {
+        styleTag = doc.createElement("style")
+        styleTag.id = "yeyebook-theme-style"
+        doc.head?.appendChild(styleTag)
+      } else {
+        doc.head?.appendChild(styleTag)
+      }
+
+      styleTag.textContent = `
+        html, body {
+          background-color: ${cfg.bg} !important;
+          background: ${cfg.bg} !important;
+          color: ${cfg.text} !important;
+          font-family: Georgia, Cambria, 'Times New Roman', Times, serif !important;
+        }
+        p, div:not([data-yeyebook-chapter-watermark]), span, h1, h2, h3, h4, h5, h6, li, blockquote, dd, dt, article, section {
+          color: ${cfg.text} !important;
+          background-color: transparent !important;
+        }
+        a {
+          color: ${cfg.link} !important;
+        }
+        [data-yeyebook-chapter-watermark] {
+          color: ${activeTheme === "dark" ? "rgba(220, 210, 220, 0.45)" : "rgba(100, 90, 90, 0.55)"} !important;
+          border-top-color: ${activeTheme === "dark" ? "rgba(255, 255, 255, 0.12)" : "rgba(0, 0, 0, 0.12)"} !important;
+        }
+      `
+
+      // Forcer également en direct sur <html> et <body>
+      if (doc.documentElement) {
+        doc.documentElement.style.setProperty("background-color", cfg.bg, "important")
+        doc.documentElement.style.setProperty("background", cfg.bg, "important")
+        doc.documentElement.style.setProperty("color", cfg.text, "important")
+      }
+      if (doc.body) {
+        doc.body.style.setProperty("background-color", cfg.bg, "important")
+        doc.body.style.setProperty("background", cfg.bg, "important")
+        doc.body.style.setProperty("color", cfg.text, "important")
+      }
     },
-    sepia: {
-      bg: "#f6ecd6",
-      text: "#432d16",
-      sub: "#8a7048",
-      border: "#432d1622",
-      panel: "#efe2c6",
+    [],
+  )
+
+  const applyCurrentTheme = useCallback(
+    (targetTheme: ReaderTheme) => {
+      currentThemeRef.current = targetTheme
+      const cfg = THEME_CONFIG[targetTheme]
+
+      if (renditionRef.current) {
+        try {
+          renditionRef.current.themes.select(targetTheme)
+        } catch {}
+        const contents = renditionRef.current.getContents?.() || []
+        contents.forEach((content: any) => {
+          if (content?.document) {
+            applyThemeToDocument(content.document, targetTheme)
+          }
+        })
+      }
+
+      if (viewerRef.current) {
+        viewerRef.current.style.backgroundColor = cfg.bg
+        const iframes = viewerRef.current.querySelectorAll("iframe")
+        iframes.forEach((ifr) => {
+          ifr.style.backgroundColor = cfg.bg
+          try {
+            const doc = ifr.contentDocument || ifr.contentWindow?.document
+            if (doc) applyThemeToDocument(doc, targetTheme)
+          } catch {}
+        })
+      }
     },
-    dark: {
-      bg: "#171015",
-      text: "#ece2e6",
-      sub: "#9a8890",
-      border: "#ffffff1a",
-      panel: "#241820",
-    },
-  }[theme]
+    [applyThemeToDocument],
+  )
 
   // Envoi throttlé de la progression
   const throttledSaveProgress = useCallback(
@@ -477,6 +639,9 @@ export function EpubWebReader({
           const doc = contents?.document
           if (!doc) return
 
+          // Appliquer immédiatement le thème actif au document chargé
+          applyThemeToDocument(doc, currentThemeRef.current)
+
           // Bloquer le clic droit
           doc.addEventListener("contextmenu", (e: MouseEvent) => e.preventDefault())
 
@@ -570,7 +735,7 @@ export function EpubWebReader({
             "font-family": "Georgia, Cambria, 'Times New Roman', Times, serif !important",
           },
         })
-        renditionInstance.themes.select(theme)
+        renditionInstance.themes.select(currentThemeRef.current)
         renditionInstance.themes.fontSize(`${fontSize}px`)
 
         // 8. Écoute du changement d'emplacement (relocated)
@@ -578,7 +743,7 @@ export function EpubWebReader({
           if (!isMounted) return
           if (location && location.start) {
             const cfi = location.start.cfi
-            const pct = Math.round((location.start.percentage || 0) * 100)
+            const pct = computeBookProgress(location, bookInstance)
             setProgressPercent(pct)
             throttledSaveProgress(cfi, pct)
 
@@ -588,6 +753,16 @@ export function EpubWebReader({
               if (item) setCurrentChapterTitle(item.label)
             }
           }
+
+          // S'assurer que le thème actif est bien appliqué après chaque changement de page
+          try {
+            const contents = renditionInstance.getContents?.() || []
+            contents.forEach((c: any) => {
+              if (c?.document) {
+                applyThemeToDocument(c.document, currentThemeRef.current)
+              }
+            })
+          } catch {}
         })
 
         // 9. Afficher le livre (au CFI sauvegardé ou au début)
@@ -602,6 +777,41 @@ export function EpubWebReader({
         } else {
           await renditionInstance.display()
         }
+
+        // Forcer l'application du thème sur le viewer et les iframes dès l'affichage
+        applyCurrentTheme(currentThemeRef.current)
+
+        // Calculer immédiatement la progression sur la première vue affichée
+        try {
+          const currentLoc = renditionInstance.currentLocation?.()
+          if (currentLoc) {
+            const initialPct = computeBookProgress(currentLoc, bookInstance)
+            if (initialPct > 0) {
+              setProgressPercent(initialPct)
+            }
+          }
+        } catch {}
+
+        // Générer les locations en arrière-plan pour un calcul ultra-précis au CFI
+        bookInstance.ready
+          .then(() => {
+            return bookInstance.locations.generate(1024)
+          })
+          .then(() => {
+            if (!isMounted) return
+            try {
+              const currentLoc = renditionRef.current?.currentLocation?.()
+              if (currentLoc) {
+                const precisePct = computeBookProgress(currentLoc, bookInstance)
+                if (precisePct > 0) {
+                  setProgressPercent(precisePct)
+                }
+              }
+            } catch {}
+          })
+          .catch((locErr: any) => {
+            console.warn("[EpubWebReader] Erreur generation locations (fallback actif):", locErr)
+          })
 
         if (isMounted) {
           setLoading(false)
@@ -636,10 +846,8 @@ export function EpubWebReader({
 
   // Mise à jour réactive du thème
   useEffect(() => {
-    if (renditionRef.current) {
-      renditionRef.current.themes.select(theme)
-    }
-  }, [theme])
+    applyCurrentTheme(theme)
+  }, [theme, applyCurrentTheme])
 
   // Mise à jour de la taille de police
   useEffect(() => {
@@ -738,8 +946,8 @@ export function EpubWebReader({
         dangerouslySetInnerHTML={{
           __html: `
             @media print { body, html { display: none !important; } }
-            #viewer { width: 100% !important; height: 80vh !important; position: relative; }
-            #viewer iframe { width: 100% !important; height: 100% !important; border: none !important; }
+            #viewer { width: 100% !important; height: 80vh !important; position: relative; background-color: ${themeColors.bg} !important; }
+            #viewer iframe { width: 100% !important; height: 100% !important; border: none !important; background-color: ${themeColors.bg} !important; }
           `,
         }}
       />
@@ -865,8 +1073,8 @@ export function EpubWebReader({
           <div
             id="viewer"
             ref={viewerRef}
-            className="w-full relative overflow-hidden"
-            style={{ width: "100%", height: "80vh" }}
+            className="w-full relative overflow-hidden transition-colors duration-200"
+            style={{ width: "100%", height: "80vh", backgroundColor: themeColors.bg }}
           />
 
           {!loading && (
