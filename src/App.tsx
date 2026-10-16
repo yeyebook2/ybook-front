@@ -73,6 +73,7 @@ import {
   uploadCoverApi,
   uploadEpubApi,
 } from "@/features/admin"
+import type { AdminStats } from "@/features/admin/types"
 const ybookSymbol = "/brand/ybook-symbol-primary.png"
 const faviconPng = "/brand/ybook-favicon-180.png"
 import { Wordmark } from "@/components/brand/Wordmark"
@@ -3318,7 +3319,7 @@ function AdminView({
   onSaveBook: (book: Book) => void
   onDeleteBook: (id: string) => void
   onTogglePublish: (id: string) => void
-  onSetOrderStatus: (id: string, status: OrderStatus) => void
+  onSetOrderStatus: (id: string, status: OrderStatus) => void | Promise<void>
   onExit: () => void
 }) {
   const [tab, setTab] = useState<AdminTab>("dashboard")
@@ -3327,17 +3328,73 @@ function AdminView({
   const [catalogQuery, setCatalogQuery] = useState("")
   const [orderFilter, setOrderFilter] = useState<"all" | OrderStatus>("all")
 
-  useEffect(() => {
-    let active = true
-    void getAdminStatsApi().then((stats) => {
-      if (active && stats) {
-        console.log("[YéYéBook Admin] Statistiques de vente synchronisées:", stats)
+  // Données synchronisées en temps réel depuis l'API Backend
+  const [apiStats, setApiStats] = useState<AdminStats | null>(null)
+  const [apiOrders, setApiOrders] = useState<Order[]>([])
+  const [loadingStats, setLoadingStats] = useState(false)
+
+  const refreshStatsAndOrders = useCallback(async () => {
+    setLoadingStats(true)
+    try {
+      const [statsData, ordersData] = await Promise.all([
+        getAdminStatsApi(),
+        getAdminOrdersApi({ limit: 100 }),
+      ])
+      if (statsData) {
+        setApiStats(statsData)
       }
-    })
-    return () => {
-      active = false
+      if (ordersData && ordersData.items) {
+        const mapped: Order[] = ordersData.items.map((o) => {
+          const orderItems: CartItem[] = (o.items || []).map((it) => ({
+            bookId: it.book_id,
+            quantity: it.quantity,
+            selected: true,
+          }))
+          return {
+            id: o.id,
+            customer: o.customer_name || o.customer_email || "Client",
+            email: o.customer_email,
+            phone: o.customer_phone || "",
+            provider: o.provider || "fedapay",
+            items: orderItems,
+            total: o.total_amount ?? 0,
+            date: o.created_at
+              ? new Date(o.created_at).toLocaleDateString("fr-FR", {
+                  day: "2-digit",
+                  month: "short",
+                  year: "numeric",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })
+              : "",
+            status: o.status as OrderStatus,
+          }
+        })
+        setApiOrders(mapped)
+      }
+    } catch (err) {
+      console.warn("[YéYéBook Admin] Erreur lors du chargement des statistiques/commandes:", err)
+    } finally {
+      setLoadingStats(false)
     }
   }, [])
+
+  useEffect(() => {
+    void refreshStatsAndOrders()
+  }, [refreshStatsAndOrders])
+
+  const handleStatusChange = async (id: string, status: OrderStatus) => {
+    // Mettre à jour immédiatement l'état local
+    setApiOrders((prev) => prev.map((o) => (o.id === id ? { ...o, status } : o)))
+    try {
+      await onSetOrderStatus(id, status)
+    } finally {
+      // Rappeler /admin/stats après le changement de statut comme requis par le backend
+      await refreshStatsAndOrders()
+    }
+  }
+
+  const currentOrders = apiOrders.length > 0 ? apiOrders : orders
 
   const catalogBooks = useMemo(() => {
     const q = catalogQuery.trim().toLowerCase()
@@ -3351,45 +3408,88 @@ function AdminView({
   const visibleOrders = useMemo(
     () =>
       orderFilter === "all"
-        ? orders
-        : orders.filter((o) => o.status === orderFilter),
-    [orders, orderFilter],
+        ? currentOrders
+        : currentOrders.filter((o) => o.status === orderFilter),
+    [currentOrders, orderFilter],
   )
 
-  const revenue = useMemo(
-    () =>
-      orders
+  const revenue = apiStats
+    ? apiStats.revenue_total
+    : currentOrders
         .filter((o) => o.status === "paid")
-        .reduce((sum, o) => sum + o.total, 0),
-    [orders],
-  )
-  const publishedCount = books.filter((b) => b.published !== false).length
-  const avgRating = books.length
-    ? books.reduce((s, b) => s + b.rating, 0) / books.length
-    : 0
-  const unitsByBook = useMemo(() => {
+        .reduce((sum, o) => sum + o.total, 0)
+
+  const publishedCount = apiStats
+    ? apiStats.books_published_count
+    : books.filter((b) => b.published !== false).length
+
+  const draftCount = apiStats
+    ? apiStats.books_draft_count
+    : books.length - publishedCount
+
+  const avgRating =
+    apiStats?.average_rating !== undefined
+      ? apiStats.average_rating
+      : books.length
+      ? books.reduce((s, b) => s + b.rating, 0) / books.length
+      : 0
+
+  const paidOrdersCount = apiStats
+    ? apiStats.orders_paid_count
+    : currentOrders.filter((o) => o.status === "paid").length
+
+  const pendingOrdersCount = apiStats
+    ? apiStats.orders_pending_count
+    : currentOrders.filter((o) => o.status === "pending").length
+
+  const totalOrdersCount = apiStats
+    ? apiStats.orders_count
+    : currentOrders.length
+
+  const cancelledOrdersCount = apiStats
+    ? apiStats.orders_cancelled_count
+    : currentOrders.filter((o) => o.status === "cancelled").length
+
+  const topBooksList = useMemo(() => {
+    if (apiStats?.top_books && apiStats.top_books.length > 0) {
+      return apiStats.top_books.map((tb) => ({
+        id: tb.id,
+        title: tb.title,
+        author: tb.author,
+        cover: tb.cover || "/src/imports/ybook-symbol-primary-1024px.png",
+        units: tb.units_sold,
+        revenue: tb.revenue,
+      }))
+    }
     const map = new Map<string, number>()
-    orders
-      .filter((o) => o.status !== "refunded")
+    currentOrders
+      .filter((o) => o.status === "paid")
       .forEach((o) =>
         o.items.forEach((it) =>
           map.set(it.bookId, (map.get(it.bookId) ?? 0) + it.quantity),
         ),
       )
-    return map
-  }, [orders])
-  const topBooks = useMemo(
-    () =>
-      [...books]
-        .map((b) => ({
-          book: b,
-          units: unitsByBook.get(b.id) ?? 0,
-        }))
-        .sort((a, b) => b.units - a.units)
-        .slice(0, 5),
-    [books, unitsByBook],
-  )
+    return [...books]
+      .map((b) => ({
+        id: b.id,
+        title: b.title,
+        author: b.author,
+        cover: b.cover,
+        units: map.get(b.id) ?? 0,
+        revenue: (b.price || 0) * (map.get(b.id) ?? 0),
+      }))
+      .sort((a, b) => b.units - a.units)
+      .slice(0, 5)
+  }, [apiStats, books, currentOrders])
+
   const monthlySales = useMemo(() => {
+    if (apiStats?.monthly_sales && apiStats.monthly_sales.length > 0) {
+      return apiStats.monthly_sales.map((m) => ({
+        label: m.month,
+        value: m.revenue,
+        orders_count: m.orders_count,
+      }))
+    }
     const now = new Date()
     const buckets: SalesBucket[] = []
     for (let i = 5; i >= 0; i--) {
@@ -3401,8 +3501,8 @@ function AdminView({
         value: 0,
       })
     }
-    orders
-      .filter((o) => o.status !== "refunded")
+    currentOrders
+      .filter((o) => o.status === "paid")
       .forEach((o) => {
         const d = new Date(o.date)
         const idx =
@@ -3411,14 +3511,23 @@ function AdminView({
         if (idx >= 0 && idx <= 5) buckets[5 - idx].value += o.total
       })
     return buckets
-  }, [orders])
+  }, [apiStats, currentOrders])
+
   const maxMonthly = Math.max(1, ...monthlySales.map((m) => m.value))
+
   const categorySales = useMemo(() => {
+    if (apiStats?.category_sales && apiStats.category_sales.length > 0) {
+      return apiStats.category_sales.map((c) => ({
+        label: c.category,
+        value: c.revenue,
+        pct: c.percentage,
+      }))
+    }
     const priceById = new Map(books.map((b) => [b.id, b.price]))
     const catById = new Map(books.map((b) => [b.id, b.category]))
     const map = new Map<string, number>()
-    orders
-      .filter((o) => o.status !== "refunded")
+    currentOrders
+      .filter((o) => o.status === "paid")
       .forEach((o) =>
         o.items.forEach((it) => {
           const cat = catById.get(it.bookId) ?? "Autre"
@@ -3435,7 +3544,7 @@ function AdminView({
     return arr
       .slice(0, 5)
       .map((c) => ({ ...c, pct: Math.round((c.value / total) * 100) }))
-  }, [books, orders])
+  }, [apiStats, books, currentOrders])
 
   const navItems: AdminNavItem[] = [
     {
@@ -3460,25 +3569,25 @@ function AdminView({
       label: "Revenu total",
       value: formatPrice(revenue),
       icon: <Wallet className="w-5 h-5" aria-hidden="true" />,
-      hint: `${orders.filter((o) => o.status === "paid").length} commandes payées`,
+      hint: `${paidOrdersCount} commande${paidOrdersCount > 1 ? "s" : ""} payée${paidOrdersCount > 1 ? "s" : ""}`,
     },
     {
       label: "Commandes",
-      value: `${orders.length}`,
+      value: `${totalOrdersCount}`,
       icon: <ClipboardList className="w-5 h-5" aria-hidden="true" />,
-      hint: `${orders.filter((o) => o.status === "pending").length} en attente`,
+      hint: `${pendingOrdersCount} en attente${cancelledOrdersCount > 0 ? ` · ${cancelledOrdersCount} annulée${cancelledOrdersCount > 1 ? "s" : ""}` : ""}`,
     },
     {
       label: "Titres publiés",
       value: `${publishedCount}`,
       icon: <BookText className="w-5 h-5" aria-hidden="true" />,
-      hint: `${books.length - publishedCount} en brouillon`,
+      hint: `${draftCount} en brouillon`,
     },
     {
       label: "Note moyenne",
       value: `${avgRating.toFixed(1)}/5`,
       icon: <TrendingUp className="w-5 h-5" aria-hidden="true" />,
-      hint: "sur l'ensemble du catalogue",
+      hint: `sur ${apiStats ? apiStats.books_total : books.length} titres du catalogue`,
     },
   ]
 
@@ -3685,7 +3794,7 @@ function AdminView({
                     </button>
                   </div>
                   <ul className="divide-y divide-border-secondary">
-                    {orders.slice(0, 5).map((o) => (
+                    {currentOrders.slice(0, 5).map((o) => (
                       <li
                         key={o.id}
                         className="flex items-center justify-between gap-lg px-xl py-md"
@@ -3717,9 +3826,9 @@ function AdminView({
                     </h2>
                   </div>
                   <ul className="flex flex-col">
-                    {topBooks.map(({ book, units }, i) => (
+                    {topBooksList.map((item, i) => (
                       <li
-                        key={book.id}
+                        key={item.id}
                         className="flex items-center gap-lg px-xl py-md border-b border-border-secondary last:border-b-0"
                       >
                         <span className="text-label-sm font-semibold text-text-tertiary w-4">
@@ -3727,7 +3836,7 @@ function AdminView({
                         </span>
                         <div className="w-8 h-12 rounded-corner-sm overflow-hidden bg-brand-tertiary border border-border-secondary shrink-0">
                           <img
-                            src={book.cover}
+                            src={item.cover}
                             alt=""
                             onError={handleCoverError}
                             className="w-full h-full object-cover"
@@ -3735,15 +3844,22 @@ function AdminView({
                         </div>
                         <div className="min-w-0 flex-1">
                           <p className="text-label-sm font-semibold text-text-primary truncate">
-                            {book.title}
+                            {item.title}
                           </p>
                           <p className="text-video-title text-text-tertiary truncate">
-                            {book.author}
+                            {item.author}
                           </p>
                         </div>
-                        <span className="text-label-sm font-semibold text-brand-primary whitespace-nowrap">
-                          {units} vendu{units > 1 ? "s" : ""}
-                        </span>
+                        <div className="text-right">
+                          <span className="text-label-sm font-semibold text-brand-primary whitespace-nowrap block">
+                            {item.units} vendu{item.units > 1 ? "s" : ""}
+                          </span>
+                          {item.revenue > 0 && (
+                            <span className="text-video-title text-text-tertiary whitespace-nowrap block">
+                              {formatPrice(item.revenue)}
+                            </span>
+                          )}
+                        </div>
                       </li>
                     ))}
                   </ul>
@@ -3939,8 +4055,8 @@ function AdminView({
                   const active = orderFilter === f.id
                   const count =
                     f.id === "all"
-                      ? orders.length
-                      : orders.filter((o) => o.status === f.id).length
+                      ? currentOrders.length
+                      : currentOrders.filter((o) => o.status === f.id).length
                   return (
                     <button
                       key={f.id}
@@ -4046,7 +4162,7 @@ function AdminView({
                                 <select
                                   value={o.status}
                                   onChange={(e) =>
-                                    onSetOrderStatus(
+                                    void handleStatusChange(
                                       o.id,
                                       e.target.value as OrderStatus,
                                     )
