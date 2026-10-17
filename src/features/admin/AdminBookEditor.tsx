@@ -98,12 +98,11 @@ export function AdminBookEditor({
     setCoverUploading(true)
     try {
       const res = await uploadCoverApi(file)
-      if (res && res.url) {
+      if (res.url) {
         setField("cover", res.url)
       }
     } catch (err: any) {
-      console.error("[Cover upload error]", err)
-      setCoverError(err?.message || "Erreur lors du téléversement de la couverture.")
+      setCoverError(err?.message || "Échec du téléversement de la couverture.")
     } finally {
       setCoverUploading(false)
     }
@@ -116,136 +115,149 @@ export function AdminBookEditor({
   const [epubProgress, setEpubProgress] = useState(0)
   const [epubStatusText, setEpubStatusText] = useState("")
   const [epubError, setEpubError] = useState<string | null>(null)
-
-  const [fileUrl, setFileUrl] = useState<string>(book?.file_url ?? "")
-  const [epubFilename, setEpubFilename] = useState<string>(
-    book?.epub_filename ?? (book ? `${book.slug || "livre"}.epub` : ""),
-  )
-  const [epubFileSize, setEpubFileSize] = useState<number>(book?.file_size ?? 0)
-  const [epubFile, setEpubFile] = useState<{ name: string; size: string } | null>(
-    book && (book.file_url || book.has_file)
+  const [epubFile, setEpubFile] = useState<{
+    name: string
+    size: string
+    rawSize?: number
+  } | null>(
+    book?.file_url
       ? {
-          name: book.epub_filename || `${book.slug || "livre"}.epub`,
-          size: book.file_size
-            ? `${(book.file_size / (1024 * 1024)).toFixed(1)} Mo`
-            : "ePub 3",
+          name: book.epub_filename || "Livre numérique.epub",
+          size:
+            typeof book.file_size === "number" && book.file_size > 0
+              ? `${(book.file_size / (1024 * 1024)).toFixed(1)} Mo`
+              : "Format ePub 3",
+          rawSize: typeof book.file_size === "number" ? book.file_size : undefined,
         }
       : null,
   )
+  const [fileUrl, setFileUrl] = useState(book?.file_url || "")
+  const [epubFilename, setEpubFilename] = useState(book?.epub_filename || "")
+  const [epubSizeBytes, setEpubSizeBytes] = useState<number | undefined>(book?.file_size)
 
   const MAX_EPUB_SIZE = 50 * 1024 * 1024 // 50 Mo
 
   const handleEpubFile = async (file: File) => {
     setEpubError(null)
-    const isEpub =
-      file.name.toLowerCase().endsWith(".epub") || file.type === "application/epub+zip"
-    if (!isEpub) {
-      setEpubError(
-        "Format non supporté. Seuls les fichiers au format .epub sont acceptés (Cahier des charges Phase 1).",
-      )
+    if (!file.name.toLowerCase().endsWith(".epub")) {
+      setEpubError("Le fichier doit être au format .epub standard.")
       return
     }
     if (file.size > MAX_EPUB_SIZE) {
-      setEpubError("Le fichier est trop lourd (50 Mo maximum).")
+      setEpubError("Le fichier ePub dépasse la taille maximale autorisée (50 Mo).")
       return
     }
 
-    setEpubUploading(true)
-    setEpubProgress(20)
-    setEpubStatusText("Lecture et transmission de l'ePub au serveur...")
+    const humanSize =
+      file.size > 1024 * 1024
+        ? `${(file.size / (1024 * 1024)).toFixed(1)} Mo`
+        : `${Math.round(file.size / 1024)} Ko`
 
-    let progressVal = 20
-    const progressInterval = setInterval(() => {
-      if (progressVal < 55) {
-        progressVal += 5
-        setEpubProgress(progressVal)
-        setEpubStatusText("Contrôle d'intégrité par le serveur...")
-      }
-    }, 180)
+    setEpubFile({
+      name: file.name,
+      size: humanSize,
+      rawSize: file.size,
+    })
+    setEpubFilename(file.name)
+    setEpubSizeBytes(file.size)
+
+    setEpubUploading(true)
+    setEpubProgress(10)
+    setEpubStatusText("Préparation du transfert de l'ePub...")
+
+    const progressTimer = setInterval(() => {
+      setEpubProgress((p) => {
+        if (p < 85) return p + Math.floor(Math.random() * 15) + 5
+        return p
+      })
+    }, 250)
 
     try {
+      setEpubStatusText("Envoi du fichier vers le serveur de stockage...")
       const res = await uploadEpubApi(file)
-      clearInterval(progressInterval)
-
-      setEpubProgress(80)
-      setEpubStatusText("Téléversement accéléré en cours...")
-      await new Promise((r) => setTimeout(r, 200))
+      clearInterval(progressTimer)
       setEpubProgress(100)
-      setEpubStatusText("Fichier ePub validé par le serveur !")
-      await new Promise((r) => setTimeout(r, 250))
-
-      setFileUrl(res.file_url)
-      setEpubFilename(res.filename || file.name)
-      if (res.size_bytes) setEpubFileSize(res.size_bytes)
-      const formattedSize =
-        file.size > 1024 * 1024
-          ? `${(file.size / (1024 * 1024)).toFixed(1)} Mo`
-          : `${Math.round(file.size / 1024)} Ko`
-      setEpubFile({ name: res.filename || file.name, size: formattedSize })
+      setEpubStatusText("ePub téléversé et validé avec succès !")
+      if (res.file_url) setFileUrl(res.file_url)
+      if (res.filename) setEpubFilename(res.filename)
+      if (typeof res.size_bytes === "number") setEpubSizeBytes(res.size_bytes)
     } catch (err: any) {
-      clearInterval(progressInterval)
-      console.error("[ePub upload error]", err)
-      setEpubError(
-        err?.message ||
-          "Erreur lors du téléversement du fichier ePub. Veuillez vérifier le fichier.",
-      )
+      clearInterval(progressTimer)
+      setEpubError(err?.message || "Échec du téléversement du fichier ePub.")
       setEpubFile(null)
       setFileUrl("")
     } finally {
-      setEpubUploading(false)
+      setTimeout(() => setEpubUploading(false), 500)
     }
   }
 
-  // Liste des auteurs existants pour autocomplétion
-  const existingAuthors = useMemo(() => {
-    return Array.from(
-      new Set(existingBooks.map((b) => b.author?.trim()).filter(Boolean)),
-    ).sort()
-  }, [existingBooks])
-
   // Ajout dynamique d'une nouvelle catégorie
-  const handleAddNewCategory = (e?: React.FormEvent) => {
-    if (e) e.preventDefault()
+  const handleAddNewCategory = (e: React.FormEvent) => {
+    e.preventDefault()
     const trimmed = newCategoryName.trim()
     if (!trimmed) return
 
-    // Normaliser avec première lettre en majuscule
-    const formatted = trimmed.charAt(0).toUpperCase() + trimmed.slice(1)
+    const normalizedExists = availableCategories.some(
+      (c) => c.toLowerCase() === trimmed.toLowerCase(),
+    )
 
-    if (!availableCategories.includes(formatted)) {
-      setAvailableCategories((prev) => [...prev, formatted])
+    if (!normalizedExists) {
+      setAvailableCategories((prev) => [...prev, trimmed])
     }
 
-    setField("category", formatted)
-    setCategoryFeedback(`Catégorie « ${formatted} » ajoutée et sélectionnée !`)
+    setField("category", trimmed)
     setNewCategoryName("")
     setIsAddingCategory(false)
-
+    setCategoryFeedback(`Nouvelle catégorie « ${trimmed} » créée et sélectionnée !`)
     setTimeout(() => setCategoryFeedback(null), 4000)
   }
 
+  // Liste des auteurs pour l'autocomplétion
+  const existingAuthors = useMemo(() => {
+    const set = new Set<string>()
+    existingBooks.forEach((b) => {
+      if (b.author?.trim()) set.add(b.author.trim())
+    })
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "fr"))
+  }, [existingBooks])
+
   // Validation
+  const isValid =
+    form.title.trim().length > 0 &&
+    form.author.trim().length > 0 &&
+    Number(form.price) > 0 &&
+    form.category.trim().length > 0 &&
+    form.cover.trim().length > 0 &&
+    Boolean(fileUrl || epubFile || book?.has_file)
+
   const missingFields: string[] = []
   if (!form.title.trim()) missingFields.push("Titre")
   if (!form.author.trim()) missingFields.push("Auteur")
-  if (!form.price || Number(form.price) <= 0) missingFields.push("Prix")
+  if (!Number(form.price)) missingFields.push("Prix (> 0 FCFA)")
   if (!form.cover.trim()) missingFields.push("Couverture")
-  if (!book && !fileUrl && !epubFile) missingFields.push("Fichier ePub")
+  if (!fileUrl && !epubFile && !book?.has_file) missingFields.push("Fichier ePub")
 
-  const isValid = missingFields.length === 0
+  // Raccourci clavier Ctrl+S ou Cmd+S
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault()
+        if (isValid && !epubUploading && !coverUploading) {
+          handleSave()
+        }
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [isValid, form, fileUrl, epubFile, epubUploading, coverUploading])
 
   const handleSave = () => {
     if (!isValid || epubUploading || coverUploading) return
 
-    const id =
-      book?.id ??
-      (typeof crypto !== "undefined" && crypto.randomUUID
-        ? crypto.randomUUID()
-        : `book-${Date.now()}`)
-
+    const id = book?.id ?? `book-${Date.now()}`
     const description =
       form.description.trim() ||
-      `Un titre de ${form.author.trim()} disponible en lecture en ligne sur YéYéBook.`
+      `${form.title} par ${form.author}. Une œuvre captivante publiée par les éditions YéYéBook.`
 
     const finalBook: Book = {
       id,
@@ -262,7 +274,7 @@ export function AdminBookEditor({
       file_url: fileUrl || book?.file_url || undefined,
       epub_filename: epubFilename || book?.epub_filename || epubFile?.name || undefined,
       has_file: Boolean(fileUrl || book?.has_file),
-      file_size: epubFileSize || book?.file_size || undefined,
+      file_size: epubSizeBytes ?? book?.file_size ?? undefined,
       description,
       chapters: book?.chapters ?? [],
       published: form.published,
@@ -272,49 +284,52 @@ export function AdminBookEditor({
   }
 
   return (
-    <div className="min-h-screen bg-surface-secondary-bg flex flex-col animate-fade">
-      {/* Barre supérieure d'actions sticky */}
-      <header className="sticky top-0 z-40 bg-surface-bg/95 backdrop-blur-md border-b border-border-secondary shadow-xs">
-        <div className="max-w-[1400px] mx-auto px-lg md:px-2xl h-[72px] flex items-center justify-between gap-lg">
-          <div className="flex items-center gap-md min-w-0">
+    <div className="flex flex-col flex-1 animate-fade min-w-0">
+      {/* Barre supérieure d'actions sticky adaptée mobile & desktop */}
+      <header className="sticky top-0 z-30 bg-surface-bg/95 backdrop-blur-md border-b border-border-secondary shadow-xs">
+        <div className="max-w-[1500px] mx-auto px-md sm:px-lg md:px-2xl min-h-[58px] sm:min-h-[68px] py-xs sm:py-0 flex items-center justify-between gap-sm sm:gap-md">
+          <div className="flex items-center gap-xs sm:gap-md min-w-0">
             <button
               onClick={onClose}
               type="button"
-              className="inline-flex items-center gap-sm px-md py-sm rounded-corner-md text-label-sm font-medium text-text-secondary hover:bg-surface-hover hover:text-text-primary transition-colors cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-sm sm:px-md py-1.5 rounded-corner-md text-label-sm font-medium text-text-secondary hover:bg-surface-hover hover:text-text-primary transition-colors cursor-pointer shrink-0"
+              title="Retourner au catalogue"
             >
               <ArrowLeft className="w-4 h-4" aria-hidden="true" />
-              <span>Retour au catalogue</span>
+              <span className="hidden sm:inline">Catalogue</span>
             </button>
-            <div className="h-5 w-[1px] bg-border-secondary hidden sm:block" />
+            <div className="h-4 w-[1px] bg-border-secondary hidden sm:block shrink-0" />
             <div className="min-w-0">
-              <div className="flex items-center gap-sm">
-                <span className="text-video-title font-semibold uppercase tracking-wider text-brand-primary">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-[11px] sm:text-video-title font-semibold uppercase tracking-wider text-brand-primary">
                   {book ? "Édition de livre" : "Nouveau livre"}
                 </span>
                 {form.published ? (
-                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-corner-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">
+                  <span className="inline-flex items-center gap-1 text-[10px] sm:text-[11px] font-semibold px-1.5 sm:px-2 py-0.5 rounded-corner-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">
                     <Eye className="w-3 h-3" />
                     Public
                   </span>
                 ) : (
-                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-corner-full bg-border-secondary text-text-secondary">
+                  <span className="inline-flex items-center gap-1 text-[10px] sm:text-[11px] font-semibold px-1.5 sm:px-2 py-0.5 rounded-corner-full bg-border-secondary text-text-secondary">
                     <EyeOff className="w-3 h-3" />
                     Brouillon
                   </span>
                 )}
               </div>
-              <h1 className="text-heading font-semibold text-text-primary truncate max-w-[400px] md:max-w-[600px]">
+              <h1 className="text-label sm:text-heading font-semibold text-text-primary truncate max-w-[200px] sm:max-w-[400px] md:max-w-[550px]">
                 {form.title.trim() || (book ? "Modifier le livre" : "Ajouter un titre au catalogue")}
               </h1>
             </div>
           </div>
 
-          <div className="flex items-center gap-md shrink-0">
-            <Button variant="neutral" onClick={onClose}>
+          {/* Boutons d'action dans l'en-tête (Desktop & Tablette) */}
+          <div className="hidden sm:flex items-center gap-sm shrink-0">
+            <Button variant="neutral" size="medium" onClick={onClose}>
               Annuler
             </Button>
             <Button
               variant="primary"
+              size="medium"
               disabled={!isValid || epubUploading || coverUploading}
               onClick={handleSave}
               iconStart={
@@ -330,35 +345,56 @@ export function AdminBookEditor({
                 : coverUploading
                   ? "Téléversement couverture…"
                   : book
-                    ? "Enregistrer les modifications"
+                    ? "Enregistrer"
                     : "Créer le titre"}
             </Button>
+          </div>
+
+          {/* Bouton rapide d'enregistrement sur mobile */}
+          <div className="flex sm:hidden items-center gap-xs shrink-0">
+            <button
+              type="button"
+              disabled={!isValid || epubUploading || coverUploading}
+              onClick={handleSave}
+              className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-corner-md text-xs font-semibold shadow-xs transition-all cursor-pointer ${
+                !isValid || epubUploading || coverUploading
+                  ? "bg-brand-primary/40 text-on-brand/70 cursor-not-allowed"
+                  : "bg-brand-primary text-on-brand hover:brightness-105 active:scale-95"
+              }`}
+            >
+              {epubUploading || coverUploading ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Check className="w-3.5 h-3.5" />
+              )}
+              <span>{book ? "Enregistrer" : "Créer"}</span>
+            </button>
           </div>
         </div>
       </header>
 
-      {/* Contenu principal de la page d'ajout/édition */}
-      <main className="flex-1 max-w-[1400px] w-full mx-auto px-lg md:px-2xl py-2xl">
-        <div className="grid lg:grid-cols-[1.55fr_1fr] gap-2xl items-start">
+      {/* Contenu principal du formulaire */}
+      <main className="flex-1 max-w-[1500px] w-full mx-auto px-sm sm:px-md md:px-xl py-md sm:py-xl md:py-2xl pb-28 sm:pb-12">
+        <div className="grid grid-cols-1 lg:grid-cols-[1.5fr_1fr] gap-md sm:gap-xl lg:gap-2xl items-start">
           {/* Colonne Gauche : Données éditoriales et métadonnées */}
-          <div className="flex flex-col gap-2xl">
+          <div className="flex flex-col gap-md sm:gap-xl lg:gap-2xl min-w-0">
             {/* Carte 1 : Informations principales */}
-            <section className="rounded-corner-xl bg-surface-bg border border-border-secondary p-xl md:p-2xl shadow-xs">
-              <div className="flex items-center gap-sm mb-xl">
-                <span className="w-8 h-8 rounded-corner-md bg-brand-tertiary text-brand-primary flex items-center justify-center">
+            <section className="rounded-corner-xl bg-surface-bg border border-border-secondary p-md sm:p-lg md:p-xl shadow-xs">
+              <div className="flex items-center gap-sm mb-md sm:mb-lg">
+                <span className="w-8 h-8 rounded-corner-md bg-brand-tertiary text-brand-primary flex items-center justify-center shrink-0">
                   <BookText className="w-4 h-4" />
                 </span>
-                <div>
-                  <h2 className="text-title font-semibold text-text-primary">
+                <div className="min-w-0">
+                  <h2 className="text-label sm:text-title font-semibold text-text-primary">
                     Informations de l'œuvre
                   </h2>
-                  <p className="text-video-title text-text-tertiary">
+                  <p className="text-video-title text-text-tertiary truncate">
                     Titre, auteur et caractéristiques de l'édition.
                   </p>
                 </div>
               </div>
 
-              <div className="flex flex-col gap-xl">
+              <div className="flex flex-col gap-md sm:gap-lg">
                 {/* Titre */}
                 <div>
                   <label
@@ -373,8 +409,8 @@ export function AdminBookEditor({
                     required
                     value={form.title}
                     onChange={(e) => setField("title", e.target.value)}
-                    placeholder="ex: Une si longue lettre, Le fabuleux destin d'Amélie..."
-                    className="w-full text-title font-medium rounded-corner-md border border-border-secondary bg-surface-bg px-xl py-md text-text-primary placeholder:text-text-tertiary focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all"
+                    placeholder="ex: Une si longue lettre, Le pagne noir..."
+                    className="w-full text-base sm:text-title font-medium rounded-corner-md border border-border-secondary bg-surface-bg px-md sm:px-xl py-sm sm:py-md text-text-primary placeholder:text-text-tertiary focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all min-h-[44px]"
                   />
                 </div>
 
@@ -392,7 +428,7 @@ export function AdminBookEditor({
                     value={form.subtitle}
                     onChange={(e) => setField("subtitle", e.target.value)}
                     placeholder="ex: Roman épistolaire africain, Tome 1..."
-                    className="w-full text-label-sm rounded-corner-md border border-border-secondary bg-surface-bg px-lg py-md text-text-primary placeholder:text-text-tertiary focus:border-brand-primary focus:outline-none focus:ring-1 focus:ring-brand-primary/20 transition-all"
+                    className="w-full text-base sm:text-label-sm rounded-corner-md border border-border-secondary bg-surface-bg px-md sm:px-lg py-sm sm:py-md text-text-primary placeholder:text-text-tertiary focus:border-brand-primary focus:outline-none focus:ring-1 focus:ring-brand-primary/20 transition-all min-h-[44px]"
                   />
                 </div>
 
@@ -411,8 +447,8 @@ export function AdminBookEditor({
                     required
                     value={form.author}
                     onChange={(e) => setField("author", e.target.value)}
-                    placeholder="ex: Mariama Bâ, Chinua Achebe, Ahmadou Kourouma..."
-                    className="w-full text-label-sm font-medium rounded-corner-md border border-border-secondary bg-surface-bg px-lg py-md text-text-primary placeholder:text-text-tertiary focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all"
+                    placeholder="ex: Mariama Bâ, Chinua Achebe, Bernard Dadié..."
+                    className="w-full text-base sm:text-label-sm font-medium rounded-corner-md border border-border-secondary bg-surface-bg px-md sm:px-lg py-sm sm:py-md text-text-primary placeholder:text-text-tertiary focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all min-h-[44px]"
                   />
                   <datalist id="existing-authors-list">
                     {existingAuthors.map((authorName) => (
@@ -420,12 +456,12 @@ export function AdminBookEditor({
                     ))}
                   </datalist>
                   <p className="text-video-title text-text-tertiary mt-1">
-                    Choisissez parmi les auteurs existants du catalogue ou tapez librement le nom d'un nouvel auteur.
+                    Choisissez parmi les auteurs existants ou tapez librement le nom d'un nouvel auteur.
                   </p>
                 </div>
 
-                {/* Grille 3 colonnes : Prix, Pages, Année */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-lg pt-sm">
+                {/* Grille 3 colonnes responsive : Prix, Pages, Année */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-md sm:gap-lg pt-xs">
                   <div>
                     <label
                       htmlFor="book-price-input"
@@ -438,10 +474,11 @@ export function AdminBookEditor({
                         id="book-price-input"
                         type="text"
                         required
+                        inputMode="numeric"
                         value={form.price}
                         onChange={(e) => setField("price", e.target.value.replace(/[^0-9]/g, ""))}
                         placeholder="2500"
-                        className="w-full text-label-sm font-semibold rounded-corner-md border border-border-secondary bg-surface-bg pl-lg pr-14 py-md text-text-primary placeholder:text-text-tertiary focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all tabular-nums"
+                        className="w-full text-base sm:text-label-sm font-semibold rounded-corner-md border border-border-secondary bg-surface-bg pl-md sm:pl-lg pr-14 py-sm sm:py-md text-text-primary placeholder:text-text-tertiary focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all tabular-nums min-h-[44px]"
                       />
                       <span className="absolute right-3 top-1/2 -translate-y-1/2 text-video-title font-bold text-text-tertiary pointer-events-none">
                         FCFA
@@ -459,10 +496,11 @@ export function AdminBookEditor({
                     <input
                       id="book-pages-input"
                       type="text"
+                      inputMode="numeric"
                       value={form.pages}
                       onChange={(e) => setField("pages", e.target.value.replace(/[^0-9]/g, ""))}
                       placeholder="165"
-                      className="w-full text-label-sm rounded-corner-md border border-border-secondary bg-surface-bg px-lg py-md text-text-primary placeholder:text-text-tertiary focus:border-brand-primary focus:outline-none focus:ring-1 focus:ring-brand-primary/20 transition-all tabular-nums"
+                      className="w-full text-base sm:text-label-sm rounded-corner-md border border-border-secondary bg-surface-bg px-md sm:px-lg py-sm sm:py-md text-text-primary placeholder:text-text-tertiary focus:border-brand-primary focus:outline-none focus:ring-1 focus:ring-brand-primary/20 transition-all tabular-nums min-h-[44px]"
                     />
                   </div>
 
@@ -476,10 +514,11 @@ export function AdminBookEditor({
                     <input
                       id="book-year-input"
                       type="text"
+                      inputMode="numeric"
                       value={form.year}
                       onChange={(e) => setField("year", e.target.value.replace(/[^0-9]/g, ""))}
                       placeholder="2026"
-                      className="w-full text-label-sm rounded-corner-md border border-border-secondary bg-surface-bg px-lg py-md text-text-primary placeholder:text-text-tertiary focus:border-brand-primary focus:outline-none focus:ring-1 focus:ring-brand-primary/20 transition-all tabular-nums"
+                      className="w-full text-base sm:text-label-sm rounded-corner-md border border-border-secondary bg-surface-bg px-md sm:px-lg py-sm sm:py-md text-text-primary placeholder:text-text-tertiary focus:border-brand-primary focus:outline-none focus:ring-1 focus:ring-brand-primary/20 transition-all tabular-nums min-h-[44px]"
                     />
                   </div>
                 </div>
@@ -487,18 +526,18 @@ export function AdminBookEditor({
             </section>
 
             {/* Carte 2 : Catégorie & Classification avec Création Dynamique */}
-            <section className="rounded-corner-xl bg-surface-bg border border-border-secondary p-xl md:p-2xl shadow-xs">
-              <div className="flex items-center justify-between mb-lg">
+            <section className="rounded-corner-xl bg-surface-bg border border-border-secondary p-md sm:p-lg md:p-xl shadow-xs">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-sm mb-md sm:mb-lg">
                 <div className="flex items-center gap-sm">
-                  <span className="w-8 h-8 rounded-corner-md bg-brand-tertiary text-brand-primary flex items-center justify-center">
+                  <span className="w-8 h-8 rounded-corner-md bg-brand-tertiary text-brand-primary flex items-center justify-center shrink-0">
                     <Tag className="w-4 h-4" />
                   </span>
                   <div>
-                    <h2 className="text-title font-semibold text-text-primary">
+                    <h2 className="text-label sm:text-title font-semibold text-text-primary">
                       Catégorie de l'ouvrage <span className="text-brand-primary">*</span>
                     </h2>
                     <p className="text-video-title text-text-tertiary">
-                      Sélectionnez une catégorie ou créez-en une nouvelle immédiatement pour ce livre.
+                      Sélectionnez ou créez une catégorie pour ce livre.
                     </p>
                   </div>
                 </div>
@@ -507,7 +546,7 @@ export function AdminBookEditor({
                   <button
                     type="button"
                     onClick={() => setIsAddingCategory(true)}
-                    className="inline-flex items-center gap-xs px-md py-sm rounded-corner-md bg-brand-primary/10 text-brand-primary hover:bg-brand-primary hover:text-white text-label-sm font-semibold transition-all cursor-pointer"
+                    className="inline-flex items-center justify-center gap-xs px-md py-2 rounded-corner-md bg-brand-primary/10 text-brand-primary hover:bg-brand-primary hover:text-white text-xs sm:text-label-sm font-semibold transition-all cursor-pointer min-h-[40px] w-full sm:w-auto"
                   >
                     <Plus className="w-4 h-4" />
                     <span>Créer une catégorie</span>
@@ -517,7 +556,7 @@ export function AdminBookEditor({
 
               {/* Message de confirmation de création d'une catégorie */}
               {categoryFeedback && (
-                <div className="mb-lg p-md rounded-corner-md bg-emerald-500/10 border border-emerald-500/20 text-emerald-800 dark:text-emerald-300 text-label-sm flex items-center gap-sm animate-fade">
+                <div className="mb-md p-sm sm:p-md rounded-corner-md bg-emerald-500/10 border border-emerald-500/20 text-emerald-800 dark:text-emerald-300 text-xs sm:text-label-sm flex items-center gap-sm animate-fade">
                   <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
                   <span>{categoryFeedback}</span>
                 </div>
@@ -525,52 +564,54 @@ export function AdminBookEditor({
 
               {/* Formulaire dynamique d'ajout d'une nouvelle catégorie */}
               {isAddingCategory && (
-                <div className="mb-xl p-lg rounded-corner-lg border-2 border-dashed border-brand-primary/40 bg-brand-tertiary/30 animate-fade">
+                <div className="mb-md sm:mb-lg p-md sm:p-lg rounded-corner-lg border-2 border-dashed border-brand-primary/40 bg-brand-tertiary/30 animate-fade">
                   <form onSubmit={handleAddNewCategory} className="flex flex-col gap-sm">
-                    <p className="text-label-sm font-semibold text-text-primary flex items-center gap-xs">
+                    <p className="text-xs sm:text-label-sm font-semibold text-text-primary flex items-center gap-xs">
                       <Sparkles className="w-4 h-4 text-brand-primary" />
                       Créer une nouvelle catégorie pour ce livre
                     </p>
-                    <div className="flex flex-wrap sm:flex-nowrap items-center gap-sm">
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-sm">
                       <input
                         type="text"
                         autoFocus
                         value={newCategoryName}
                         onChange={(e) => setNewCategoryName(e.target.value)}
-                        placeholder="ex: Philosophie, Essai, Biographie, Bande Dessinée, Art..."
-                        className="flex-1 min-w-[220px] text-label-sm rounded-corner-md border border-border-secondary bg-surface-bg px-lg py-md text-text-primary placeholder:text-text-tertiary focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/20"
+                        placeholder="ex: Philosophie, Essai, Biographie, Jeunesse..."
+                        className="w-full sm:flex-1 text-base sm:text-label-sm rounded-corner-md border border-border-secondary bg-surface-bg px-md sm:px-lg py-sm sm:py-md text-text-primary placeholder:text-text-tertiary focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/20 min-h-[44px]"
                       />
-                      <Button
-                        type="submit"
-                        variant="primary"
-                        size="medium"
-                        iconStart={<Check className="w-4 h-4" />}
-                        disabled={!newCategoryName.trim()}
-                      >
-                        Créer & Sélectionner
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="neutral"
-                        size="medium"
-                        onClick={() => {
-                          setIsAddingCategory(false)
-                          setNewCategoryName("")
-                        }}
-                      >
-                        Annuler
-                      </Button>
+                      <div className="flex items-center gap-sm">
+                        <Button
+                          type="submit"
+                          variant="primary"
+                          size="medium"
+                          iconStart={<Check className="w-4 h-4" />}
+                          disabled={!newCategoryName.trim()}
+                        >
+                          Créer
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="neutral"
+                          size="medium"
+                          onClick={() => {
+                            setIsAddingCategory(false)
+                            setNewCategoryName("")
+                          }}
+                        >
+                          Annuler
+                        </Button>
+                      </div>
                     </div>
                     <p className="text-video-title text-text-tertiary">
-                      Cette catégorie sera immédiatement attribuée à ce livre et ajoutée à la liste des filtres.
+                      Cette catégorie sera immédiatement attribuée à ce livre et ajoutée aux filtres.
                     </p>
                   </form>
                 </div>
               )}
 
-              {/* Badges de catégories sélectionnables */}
+              {/* Badges de catégories sélectionnables (tactiles et adaptés mobile) */}
               <div
-                className="flex flex-wrap gap-sm"
+                className="flex flex-wrap gap-xs sm:gap-sm"
                 role="radiogroup"
                 aria-label="Catégories disponibles"
               >
@@ -583,9 +624,9 @@ export function AdminBookEditor({
                       role="radio"
                       aria-checked={isSelected}
                       onClick={() => setField("category", cat)}
-                      className={`inline-flex items-center gap-xs px-xl py-sm rounded-corner-full text-label-sm font-medium border transition-all cursor-pointer ${
+                      className={`inline-flex items-center gap-xs px-md sm:px-lg py-1.5 sm:py-2 rounded-corner-full text-xs sm:text-label-sm font-medium border transition-all cursor-pointer min-h-[38px] ${
                         isSelected
-                          ? "bg-brand-primary text-on-brand border-brand-primary shadow-xs scale-[1.02]"
+                          ? "bg-brand-primary text-on-brand border-brand-primary shadow-xs font-semibold"
                           : "bg-surface-secondary-bg/60 text-text-secondary border-border-secondary hover:border-brand-primary hover:text-text-primary hover:bg-surface-secondary-bg"
                       }`}
                     >
@@ -598,46 +639,46 @@ export function AdminBookEditor({
             </section>
 
             {/* Carte 3 : Résumé & Description éditoriale */}
-            <section className="rounded-corner-xl bg-surface-bg border border-border-secondary p-xl md:p-2xl shadow-xs">
-              <div className="flex items-center justify-between mb-md">
+            <section className="rounded-corner-xl bg-surface-bg border border-border-secondary p-md sm:p-lg md:p-xl shadow-xs">
+              <div className="flex items-center justify-between mb-sm sm:mb-md">
                 <div>
-                  <h2 className="text-title font-semibold text-text-primary">
-                    Description & Synopsis de l'œuvre
+                  <h2 className="text-label sm:text-title font-semibold text-text-primary">
+                    Description & Synopsis
                   </h2>
                   <p className="text-video-title text-text-tertiary">
-                    Présentez l'intrigue et donnez envie aux lecteurs de commencer la lecture.
+                    Présentez l'intrigue et l'intérêt de l'ouvrage.
                   </p>
                 </div>
-                <span className="text-video-title text-text-tertiary tabular-nums">
-                  {form.description.length} caractères
+                <span className="text-video-title text-text-tertiary tabular-nums shrink-0">
+                  {form.description.length} car.
                 </span>
               </div>
 
               <textarea
                 id="book-description-editor"
-                rows={7}
+                rows={6}
                 value={form.description}
                 onChange={(e) => setField("description", e.target.value)}
                 placeholder="Rédigez ici le résumé officiel ou la quatrième de couverture de l'ouvrage..."
-                className="w-full rounded-corner-lg border border-border-secondary bg-surface-bg px-xl py-lg text-label-sm text-text-primary placeholder:text-text-tertiary resize-y focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all leading-relaxed"
+                className="w-full rounded-corner-lg border border-border-secondary bg-surface-bg px-md sm:px-xl py-sm sm:py-lg text-base sm:text-label-sm text-text-primary placeholder:text-text-tertiary resize-y focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all leading-relaxed min-h-[130px]"
               />
             </section>
 
             {/* Carte 4 : Visibilité & Statut */}
-            <section className="rounded-corner-xl bg-surface-bg border border-border-secondary p-xl md:p-2xl shadow-xs">
-              <h2 className="text-title font-semibold text-text-primary mb-xs">
+            <section className="rounded-corner-xl bg-surface-bg border border-border-secondary p-md sm:p-lg md:p-xl shadow-xs">
+              <h2 className="text-label sm:text-title font-semibold text-text-primary mb-xs">
                 Statut de diffusion
               </h2>
-              <p className="text-video-title text-text-tertiary mb-lg">
-                Définissez si ce livre doit être rendu immédiatement accessible au public.
+              <p className="text-video-title text-text-tertiary mb-md">
+                Définissez la visibilité publique de cet ouvrage.
               </p>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-lg">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-sm sm:gap-md">
                 <button
                   type="button"
                   onClick={() => setField("published", true)}
                   aria-pressed={form.published}
-                  className={`flex items-start gap-md p-lg rounded-corner-lg border text-left transition-all cursor-pointer ${
+                  className={`flex items-start gap-md p-md sm:p-lg rounded-corner-lg border text-left transition-all cursor-pointer ${
                     form.published
                       ? "border-emerald-600 bg-emerald-500/10 ring-1 ring-emerald-600/30"
                       : "border-border-secondary bg-surface-bg hover:bg-surface-secondary-bg"
@@ -652,12 +693,12 @@ export function AdminBookEditor({
                   >
                     <Eye className="w-5 h-5" />
                   </span>
-                  <div>
+                  <div className="min-w-0">
                     <p className="text-label-sm font-semibold text-text-primary">
                       Publié immédiatement
                     </p>
-                    <p className="text-video-title text-text-secondary mt-0.5">
-                      Visible dans le catalogue public et disponible à l'achat par les clients.
+                    <p className="text-video-title text-text-secondary mt-0.5 leading-snug">
+                      Visible dans le catalogue et disponible à l'achat par les clients.
                     </p>
                   </div>
                 </button>
@@ -666,7 +707,7 @@ export function AdminBookEditor({
                   type="button"
                   onClick={() => setField("published", false)}
                   aria-pressed={!form.published}
-                  className={`flex items-start gap-md p-lg rounded-corner-lg border text-left transition-all cursor-pointer ${
+                  className={`flex items-start gap-md p-md sm:p-lg rounded-corner-lg border text-left transition-all cursor-pointer ${
                     !form.published
                       ? "border-brand-primary bg-brand-primary/10 ring-1 ring-brand-primary/30"
                       : "border-border-secondary bg-surface-bg hover:bg-surface-secondary-bg"
@@ -681,12 +722,12 @@ export function AdminBookEditor({
                   >
                     <EyeOff className="w-5 h-5" />
                   </span>
-                  <div>
+                  <div className="min-w-0">
                     <p className="text-label-sm font-semibold text-text-primary">
-                      Enregistrer comme brouillon
+                      Enregistrer en brouillon
                     </p>
-                    <p className="text-video-title text-text-secondary mt-0.5">
-                      Masqué du catalogue public, visible uniquement dans votre console admin.
+                    <p className="text-video-title text-text-secondary mt-0.5 leading-snug">
+                      Masqué du catalogue public, visible uniquement dans l'administration.
                     </p>
                   </div>
                 </button>
@@ -695,12 +736,12 @@ export function AdminBookEditor({
           </div>
 
           {/* Colonne Droite : Couverture, Fichier ePub et Synthèse */}
-          <div className="flex flex-col gap-2xl sticky top-[92px]">
+          <div className="flex flex-col gap-md sm:gap-xl lg:gap-2xl lg:sticky lg:top-[88px] min-w-0">
             {/* Carte 5 : Couverture du livre */}
-            <section className="rounded-corner-xl bg-surface-bg border border-border-secondary p-xl shadow-xs">
-              <div className="flex items-center justify-between mb-md">
+            <section className="rounded-corner-xl bg-surface-bg border border-border-secondary p-md sm:p-lg md:p-xl shadow-xs">
+              <div className="flex items-center justify-between mb-sm sm:mb-md">
                 <div>
-                  <h3 className="text-label font-semibold text-text-primary">
+                  <h3 className="text-label-sm sm:text-label font-semibold text-text-primary">
                     Couverture de l'e-book <span className="text-brand-primary">*</span>
                   </h3>
                   <p className="text-video-title text-text-tertiary">
@@ -714,9 +755,9 @@ export function AdminBookEditor({
                     setUseUrlMode(!useUrlMode)
                     setCoverError(null)
                   }}
-                  className="text-video-title font-semibold text-brand-primary hover:underline cursor-pointer"
+                  className="text-xs sm:text-video-title font-semibold text-brand-primary hover:underline cursor-pointer"
                 >
-                  {useUrlMode ? "Glisser-déposer un fichier" : "Saisir une URL"}
+                  {useUrlMode ? "Importer un fichier" : "Saisir une URL"}
                 </button>
               </div>
 
@@ -730,7 +771,7 @@ export function AdminBookEditor({
                       setField("cover", e.target.value)
                     }}
                     placeholder="https://images.example.com/cover.jpg"
-                    className="w-full text-label-sm rounded-corner-md border border-border-secondary bg-surface-bg px-lg py-md text-text-primary placeholder:text-text-tertiary focus:border-brand-primary focus:outline-none"
+                    className="w-full text-base sm:text-label-sm rounded-corner-md border border-border-secondary bg-surface-bg px-md sm:px-lg py-sm sm:py-md text-text-primary placeholder:text-text-tertiary focus:border-brand-primary focus:outline-none min-h-[44px]"
                   />
                   {form.cover && (
                     <div className="w-32 h-48 rounded-corner-md overflow-hidden bg-brand-tertiary border border-border-secondary mx-auto mt-sm shadow-md">
@@ -759,7 +800,7 @@ export function AdminBookEditor({
 
                   {form.cover ? (
                     <div className="flex flex-col items-center gap-md p-md rounded-corner-lg border border-border-secondary bg-surface-secondary-bg/40">
-                      <div className="w-36 h-52 rounded-corner-md overflow-hidden bg-brand-tertiary border border-border-secondary shadow-md relative group">
+                      <div className="w-32 sm:w-36 h-48 sm:h-52 rounded-corner-md overflow-hidden bg-brand-tertiary border border-border-secondary shadow-md relative group">
                         <img
                           src={form.cover}
                           alt="Couverture"
@@ -780,7 +821,7 @@ export function AdminBookEditor({
                         <button
                           type="button"
                           onClick={() => fileInputRef.current?.click()}
-                          className="text-label-sm text-brand-primary font-semibold hover:underline cursor-pointer"
+                          className="text-xs sm:text-label-sm text-brand-primary font-semibold hover:underline cursor-pointer"
                         >
                           Remplacer la photo
                         </button>
@@ -791,7 +832,7 @@ export function AdminBookEditor({
                             setField("cover", "")
                             if (fileInputRef.current) fileInputRef.current.value = ""
                           }}
-                          className="text-label-sm text-danger hover:underline cursor-pointer inline-flex items-center gap-1"
+                          className="text-xs sm:text-label-sm text-danger hover:underline cursor-pointer inline-flex items-center gap-1"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                           Supprimer
@@ -816,7 +857,7 @@ export function AdminBookEditor({
                         }
                       }}
                       onClick={() => fileInputRef.current?.click()}
-                      className={`border-2 border-dashed rounded-corner-xl p-2xl flex flex-col items-center justify-center gap-sm text-center cursor-pointer transition-all ${
+                      className={`border-2 border-dashed rounded-corner-xl p-lg sm:p-2xl flex flex-col items-center justify-center gap-sm text-center cursor-pointer transition-all min-h-[160px] ${
                         isDraggingCover
                           ? "border-brand-primary bg-brand-primary/10 scale-[1.02]"
                           : "border-border-primary bg-surface-secondary-bg/40 hover:bg-surface-secondary-bg hover:border-brand-primary"
@@ -826,11 +867,11 @@ export function AdminBookEditor({
                         <UploadCloud className="w-6 h-6" />
                       </div>
                       <div>
-                        <p className="text-label-sm font-semibold text-text-primary">
-                          Glissez-déposez l'image de couverture
+                        <p className="text-xs sm:text-label-sm font-semibold text-text-primary">
+                          Touchez pour importer votre photo
                         </p>
                         <p className="text-video-title text-text-secondary mt-0.5">
-                          ou <span className="text-brand-primary underline font-medium">parcourez vos fichiers</span>
+                          ou <span className="text-brand-primary underline font-medium">glissez-déposez un fichier</span>
                         </p>
                       </div>
                       <p className="text-[11px] text-text-tertiary">
@@ -850,16 +891,16 @@ export function AdminBookEditor({
             </section>
 
             {/* Carte 6 : Fichier ePub Numérique */}
-            <section className="rounded-corner-xl bg-surface-bg border border-border-secondary p-xl shadow-xs">
-              <div className="flex items-center justify-between mb-sm">
-                <h3 className="text-label font-semibold text-text-primary">
+            <section className="rounded-corner-xl bg-surface-bg border border-border-secondary p-md sm:p-lg md:p-xl shadow-xs">
+              <div className="flex items-center justify-between mb-xs sm:mb-sm">
+                <h3 className="text-label-sm sm:text-label font-semibold text-text-primary">
                   Fichier ePub numérique <span className="text-brand-primary">*</span>
                 </h3>
-                <span className="text-[11px] font-semibold text-text-tertiary uppercase tracking-wider">
+                <span className="text-[10px] sm:text-[11px] font-semibold text-text-tertiary uppercase tracking-wider">
                   Phase 1 · ePub 3
                 </span>
               </div>
-              <p className="text-video-title text-text-tertiary mb-md">
+              <p className="text-video-title text-text-tertiary mb-sm sm:mb-md">
                 Fichier .epub requis pour le lecteur web YéYéBook (50 Mo max).
               </p>
 
@@ -877,15 +918,15 @@ export function AdminBookEditor({
 
               {epubUploading ? (
                 /* Barre de progression animée */
-                <div className="p-xl rounded-corner-lg border border-brand-primary/40 bg-surface-secondary-bg flex flex-col gap-sm animate-fade">
+                <div className="p-md sm:p-lg rounded-corner-lg border border-brand-primary/40 bg-surface-secondary-bg flex flex-col gap-sm animate-fade">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-xs">
                       <BookOpen className="w-4 h-4 text-brand-primary animate-pulse" />
-                      <span className="text-label-sm font-semibold text-text-primary">
+                      <span className="text-xs sm:text-label-sm font-semibold text-text-primary">
                         Téléversement de l'ePub...
                       </span>
                     </div>
-                    <span className="text-label-sm font-bold text-brand-primary tabular-nums">
+                    <span className="text-xs sm:text-label-sm font-bold text-brand-primary tabular-nums">
                       {epubProgress}%
                     </span>
                   </div>
@@ -901,16 +942,16 @@ export function AdminBookEditor({
                 </div>
               ) : epubFile ? (
                 /* Fichier ePub validé */
-                <div className="flex items-center gap-md p-lg rounded-corner-lg border border-emerald-500/30 bg-emerald-500/5">
-                  <div className="w-10 h-10 rounded-corner-md bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 flex items-center justify-center shrink-0">
-                    <BookOpen className="w-5 h-5" />
+                <div className="flex items-center gap-sm sm:gap-md p-md rounded-corner-lg border border-emerald-500/30 bg-emerald-500/5">
+                  <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-corner-md bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 flex items-center justify-center shrink-0">
+                    <BookOpen className="w-4 h-4 sm:w-5 sm:h-5" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-xs">
-                      <p className="text-label-sm font-semibold text-text-primary truncate">
+                      <p className="text-xs sm:text-label-sm font-semibold text-text-primary truncate">
                         {epubFile.name}
                       </p>
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <CheckCircle2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-600 shrink-0" />
                     </div>
                     <p className="text-video-title text-text-tertiary">
                       {epubFile.size} · Prêt pour la lecture
@@ -922,7 +963,7 @@ export function AdminBookEditor({
                       onClick={() => epubInputRef.current?.click()}
                       className="text-video-title text-brand-primary font-semibold hover:underline cursor-pointer px-sm py-xs"
                     >
-                      Remplacer
+                      Changer
                     </button>
                     <button
                       type="button"
@@ -939,7 +980,7 @@ export function AdminBookEditor({
                   </div>
                 </div>
               ) : (
-                /* Zone de dépôt ePub */
+                /* Zone de dépôt ePub tactile */
                 <div
                   onDragOver={(e) => {
                     e.preventDefault()
@@ -957,7 +998,7 @@ export function AdminBookEditor({
                     }
                   }}
                   onClick={() => epubInputRef.current?.click()}
-                  className={`border-2 border-dashed rounded-corner-xl p-xl flex flex-col items-center justify-center gap-sm text-center cursor-pointer transition-all ${
+                  className={`border-2 border-dashed rounded-corner-xl p-lg sm:p-xl flex flex-col items-center justify-center gap-sm text-center cursor-pointer transition-all min-h-[140px] ${
                     isDraggingEpub
                       ? "border-brand-primary bg-brand-primary/10 scale-[1.02]"
                       : "border-border-primary bg-surface-secondary-bg/40 hover:bg-surface-secondary-bg hover:border-brand-primary"
@@ -967,11 +1008,11 @@ export function AdminBookEditor({
                     <BookOpen className="w-5 h-5" />
                   </div>
                   <div>
-                    <p className="text-label-sm font-semibold text-text-primary">
-                      Glissez-déposez le fichier .epub ici
+                    <p className="text-xs sm:text-label-sm font-semibold text-text-primary">
+                      Touchez pour importer le fichier .epub
                     </p>
                     <p className="text-video-title text-text-secondary mt-0.5">
-                      ou <span className="text-brand-primary underline font-medium">parcourez vos fichiers</span>
+                      ou <span className="text-brand-primary underline font-medium">glissez-déposez le fichier</span>
                     </p>
                   </div>
                   <p className="text-[11px] text-text-tertiary">
@@ -989,13 +1030,13 @@ export function AdminBookEditor({
             </section>
 
             {/* Carte 7 : Résumé des prérequis avant enregistrement */}
-            <section className="rounded-corner-xl bg-surface-bg border border-border-secondary p-lg shadow-xs">
-              <h4 className="text-label-sm font-semibold text-text-primary mb-sm flex items-center gap-xs">
+            <section className="rounded-corner-xl bg-surface-bg border border-border-secondary p-md sm:p-lg shadow-xs">
+              <h4 className="text-xs sm:text-label-sm font-semibold text-text-primary mb-sm flex items-center gap-xs">
                 <Info className="w-4 h-4 text-brand-primary" />
                 Vérification des éléments requis
               </h4>
 
-              <ul className="flex flex-col gap-xs text-video-title">
+              <ul className="flex flex-col gap-1.5 text-video-title">
                 <li className="flex items-center gap-sm">
                   {form.title.trim() ? (
                     <Check className="w-4 h-4 text-emerald-600 shrink-0" />
@@ -1036,7 +1077,7 @@ export function AdminBookEditor({
                     <span className="w-4 h-4 rounded-full border border-border-secondary shrink-0" />
                   )}
                   <span className={form.category.trim() ? "text-text-primary" : "text-text-tertiary"}>
-                    Catégorie sélectionnée ({form.category})
+                    Catégorie ({form.category})
                   </span>
                 </li>
 
@@ -1070,14 +1111,54 @@ export function AdminBookEditor({
               </ul>
 
               {missingFields.length > 0 && (
-                <div className="mt-md p-sm rounded-corner-md bg-brand-primary/5 border border-brand-primary/20 text-video-title text-brand-primary">
-                  Éléments manquants : {missingFields.join(", ")}
+                <div className="mt-sm p-sm rounded-corner-md bg-brand-primary/5 border border-brand-primary/20 text-video-title text-brand-primary">
+                  Manquant : {missingFields.join(", ")}
                 </div>
               )}
             </section>
           </div>
         </div>
       </main>
+
+      {/* Barre d'action sticky en bas d'écran sur MOBILE (< sm) */}
+      <div className="sm:hidden fixed bottom-0 left-0 right-0 z-40 bg-surface-bg/95 backdrop-blur-md border-t border-border-secondary p-sm px-md flex items-center justify-between gap-sm shadow-xl">
+        <button
+          type="button"
+          onClick={onClose}
+          className="px-md py-2 rounded-corner-md text-xs font-semibold text-text-secondary hover:bg-surface-secondary-bg cursor-pointer"
+        >
+          Annuler
+        </button>
+
+        <div className="flex items-center gap-2">
+          {missingFields.length > 0 && (
+            <span className="text-[11px] font-semibold text-text-tertiary">
+              {6 - missingFields.length}/6 requis
+            </span>
+          )}
+          <Button
+            variant="primary"
+            size="medium"
+            disabled={!isValid || epubUploading || coverUploading}
+            onClick={handleSave}
+            iconStart={
+              epubUploading || coverUploading ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Check className="w-4 h-4" />
+              )
+            }
+          >
+            {epubUploading
+              ? "Envoi ePub…"
+              : coverUploading
+                ? "Envoi image…"
+                : book
+                  ? "Enregistrer"
+                  : "Créer le livre"}
+          </Button>
+        </div>
+      </div>
     </div>
   )
 }

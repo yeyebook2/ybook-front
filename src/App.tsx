@@ -131,6 +131,7 @@ import {
   LayoutDashboard,
   LayoutGrid,
   Library as LibraryIcon,
+  BookPlus,
   ClipboardList,
   Pencil,
   TrendingUp,
@@ -3280,7 +3281,7 @@ function CheckoutView({
   )
 }
 
-type AdminTab = "dashboard" | "catalog" | "orders"
+type AdminTab = "dashboard" | "catalog" | "create-book" | "orders"
 
 const ORDER_STATUS: Record<OrderStatus, OrderStatusMeta> = {
   paid: { label: "Payée", className: "bg-brand-tertiary text-brand-primary" },
@@ -3777,6 +3778,11 @@ function AdminView({
       icon: <LibraryIcon className="w-4 h-4" aria-hidden="true" />,
     },
     {
+      id: "create-book",
+      label: editing ? "Modifier un titre" : "Ajouter un livre",
+      icon: <BookPlus className="w-4 h-4" aria-hidden="true" />,
+    },
+    {
       id: "orders",
       label: "Commandes",
       icon: <ClipboardList className="w-4 h-4" aria-hidden="true" />,
@@ -3819,29 +3825,39 @@ function AdminView({
     },
   ]
 
-  if (editing || creating) {
-    return (
-      <AdminBookEditor
-        book={editing}
-        existingBooks={books}
-        onClose={() => {
-          setEditing(null)
-          setCreating(false)
-        }}
-        onSave={(b) => {
-          onSaveBook(b)
-          setEditing(null)
-          setCreating(false)
-        }}
-      />
-    )
-  }
-
   return (
     <div className="min-h-screen bg-surface-secondary-bg lg:grid lg:grid-cols-[264px_1fr]">
-      {}
+      {/* Sidebar */}
       <aside className="lg:sticky lg:top-0 lg:h-screen bg-surface-bg border-b lg:border-b-0 lg:border-r border-border-secondary flex lg:flex-col">
         <div className="flex lg:flex-col lg:h-full w-full">
+          {/* Header de marque pour mobile (< lg) */}
+          <div className="flex lg:hidden items-center justify-between px-md py-sm border-b border-border-secondary w-full bg-surface-bg">
+            <div className="flex items-center gap-sm">
+              <img
+                src={ybookSymbol}
+                alt=""
+                className="h-6 w-6 object-contain"
+                aria-hidden="true"
+              />
+              <div className="flex flex-col leading-none">
+                <span className="text-label-sm font-semibold text-text-primary font-serif">
+                  YéYéBook
+                </span>
+                <span className="text-[10px] text-brand-primary font-semibold uppercase tracking-wider">
+                  Admin
+                </span>
+              </div>
+            </div>
+            <button
+              onClick={onExit}
+              className="inline-flex items-center gap-1 px-sm py-1 rounded-corner-md text-video-title font-medium text-text-secondary hover:text-text-primary hover:bg-surface-secondary-bg transition-colors cursor-pointer"
+            >
+              <LogOut className="w-3.5 h-3.5" aria-hidden="true" />
+              <span>Boutique</span>
+            </button>
+          </div>
+
+          {/* Header de marque pour desktop (lg+) */}
           <div className="hidden lg:flex items-center gap-md px-xl h-[72px] border-b border-border-secondary">
             <img
               src={ybookSymbol}
@@ -3858,8 +3874,9 @@ function AdminView({
               </span>
             </div>
           </div>
+
           <nav
-            className="flex lg:flex-col gap-xs p-lg flex-1 overflow-x-auto"
+            className="flex lg:flex-col gap-xs p-sm sm:p-md lg:p-lg flex-1 overflow-x-auto no-scrollbar scroll-smooth"
             aria-label="Sections d'administration"
           >
             {navItems.map((item) => {
@@ -3867,20 +3884,29 @@ function AdminView({
               return (
                 <button
                   key={item.id}
-                  onClick={() => setTab(item.id)}
+                  onClick={() => {
+                    if (item.id === "create-book") {
+                      if (!editing) setCreating(true)
+                    } else {
+                      setEditing(null)
+                      setCreating(false)
+                    }
+                    setTab(item.id)
+                  }}
                   aria-current={active ? "page" : undefined}
-                  className={`inline-flex items-center gap-md px-lg py-md rounded-corner-md text-label-sm font-medium whitespace-nowrap transition-colors cursor-pointer ${
+                  className={`inline-flex items-center gap-sm sm:gap-md px-md sm:px-lg py-sm sm:py-md rounded-corner-md text-xs sm:text-label-sm font-medium whitespace-nowrap transition-colors cursor-pointer ${
                     active
-                      ? "bg-brand-primary text-on-brand"
+                      ? "bg-brand-primary text-on-brand shadow-xs"
                       : "text-text-secondary hover:bg-surface-hover hover:text-text-primary"
                   }`}
                 >
                   {item.icon}
-                  {item.label}
+                  <span>{item.label}</span>
                 </button>
               )
             })}
           </nav>
+
           <div className="hidden lg:block p-lg border-t border-border-secondary">
             <button
               onClick={onExit}
@@ -3893,39 +3919,63 @@ function AdminView({
         </div>
       </aside>
 
-      {}
-      <div className="flex flex-col min-h-screen">
-        <header className="sticky top-0 z-30 bg-surface-bg/85 backdrop-blur-xl border-b border-border-secondary">
-          <div className="px-xl md:px-2xl h-[72px] flex items-center justify-between gap-lg">
-            <div>
-              <p className="text-video-title uppercase tracking-widest text-brand-primary font-semibold">
-                Administration
-              </p>
-              <h1 className="text-heading font-semibold text-text-primary">
-                {navItems.find((n) => n.id === tab)?.label}
-              </h1>
-            </div>
-            <div className="flex items-center gap-md">
-              {tab === "catalog" && (
-                <Button
-                  variant="primary"
-                  iconStart={<Plus className="w-4 h-4" />}
-                  onClick={() => setCreating(true)}
-                >
-                  Nouveau titre
-                </Button>
-              )}
-              <button
-                onClick={onExit}
-                className="lg:hidden inline-flex items-center gap-xs text-label-sm text-text-secondary hover:text-text-primary cursor-pointer"
-              >
-                <LogOut className="w-4 h-4" aria-hidden="true" /> Boutique
-              </button>
-            </div>
-          </div>
-        </header>
+      {/* Colonne de droite */}
+      <div className="flex flex-col min-h-screen min-w-0">
+        {tab === "create-book" ? (
+          <AdminBookEditor
+            book={editing}
+            existingBooks={books}
+            onClose={() => {
+              setEditing(null)
+              setCreating(false)
+              setTab("catalog")
+            }}
+            onSave={(b) => {
+              onSaveBook(b)
+              setEditing(null)
+              setCreating(false)
+              setTab("catalog")
+            }}
+          />
+        ) : (
+          <>
+            <header className="sticky top-0 z-30 bg-surface-bg/85 backdrop-blur-xl border-b border-border-secondary">
+              <div className="px-md sm:px-xl md:px-2xl h-[60px] sm:h-[72px] flex items-center justify-between gap-md sm:gap-lg">
+                <div>
+                  <p className="text-[11px] sm:text-video-title uppercase tracking-widest text-brand-primary font-semibold">
+                    Administration
+                  </p>
+                  <h1 className="text-label sm:text-heading font-semibold text-text-primary">
+                    {navItems.find((n) => n.id === tab)?.label}
+                  </h1>
+                </div>
+                <div className="flex items-center gap-sm sm:gap-md">
+                  {tab === "catalog" && (
+                    <Button
+                      variant="primary"
+                      size="medium"
+                      iconStart={<Plus className="w-4 h-4" />}
+                      onClick={() => {
+                        setEditing(null)
+                        setCreating(true)
+                        setTab("create-book")
+                      }}
+                    >
+                      <span className="hidden sm:inline">Nouveau titre</span>
+                      <span className="sm:hidden">Nouveau</span>
+                    </Button>
+                  )}
+                  <button
+                    onClick={onExit}
+                    className="lg:hidden inline-flex items-center gap-xs text-xs sm:text-label-sm text-text-secondary hover:text-text-primary cursor-pointer"
+                  >
+                    <LogOut className="w-3.5 h-3.5 sm:w-4 sm:h-4" aria-hidden="true" /> Boutique
+                  </button>
+                </div>
+              </div>
+            </header>
 
-        <main className="flex-1 px-xl md:px-2xl py-2xl animate-fade">
+            <main className="flex-1 px-sm sm:px-md md:px-xl lg:px-2xl py-md sm:py-xl md:py-2xl animate-fade">
           {}
           {tab === "dashboard" && (
             <div className="flex flex-col gap-2xl w-full max-w-[1600px] mx-auto">
@@ -4480,7 +4530,11 @@ function AdminView({
                             <td className="px-xl py-md">
                               <div className="flex items-center justify-end gap-xs">
                                 <button
-                                  onClick={() => setEditing(book)}
+                                  onClick={() => {
+                                    setEditing(book)
+                                    setCreating(false)
+                                    setTab("create-book")
+                                  }}
                                   aria-label={`Modifier « ${book.title} »`}
                                   className="inline-flex items-center justify-center w-8 h-8 rounded-corner-md text-text-secondary hover:bg-surface-hover hover:text-brand-primary transition-colors cursor-pointer"
                                 >
@@ -4736,8 +4790,9 @@ function AdminView({
             </div>
           )}
         </main>
-      </div>
-
-    </div>
+      </>
+    )}
+  </div>
+</div>
   )
 }
