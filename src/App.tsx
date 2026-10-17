@@ -62,6 +62,7 @@ import { Toast, type ToastVariant } from "@/components/ui/Toast"
 import { ApiError } from "@/lib/api-errors"
 import { createOrderApi, initiatePaymentApi } from "@/features/checkout/checkout.api"
 import {
+  AdminBookEditor,
   createAdminBookApi,
   deleteAdminBookApi,
   getAdminBooksApi,
@@ -196,6 +197,7 @@ type OrderStatusMeta = {
 type SalesBucket = {
   label: string
   value: number
+  orders_count?: number
 }
 type AdminNavItem = {
   id: AdminTab
@@ -3335,6 +3337,11 @@ function AdminView({
   const [ordersLoading, setOrdersLoading] = useState(false)
   const [ordersTotal, setOrdersTotal] = useState(0)
 
+  // Tri et filtrage par auteur pour les graphiques du tableau de bord
+  const [selectedAuthor, setSelectedAuthor] = useState<string>("all")
+  const [authorSortBy, setAuthorSortBy] = useState<"revenue" | "units" | "books" | "name">("revenue")
+  const [authorSortOrder, setAuthorSortOrder] = useState<"asc" | "desc">("desc")
+
   // Données synchronisées en temps réel depuis l'API Backend
   const [apiStats, setApiStats] = useState<AdminStats | null>(null)
   const [apiOrders, setApiOrders] = useState<Order[]>([])
@@ -3592,6 +3599,172 @@ function AdminView({
       .map((c) => ({ ...c, pct: Math.round((c.value / total) * 100) }))
   }, [apiStats, books, currentOrders])
 
+  // Statistiques détaillées agrégées par auteur
+  const authorStats = useMemo(() => {
+    const bookById = new Map(books.map((b) => [b.id, b]))
+    const map = new Map<
+      string,
+      { author: string; revenue: number; units: number; booksCount: number; topBookTitle?: string }
+    >()
+
+    // Initialiser avec tous les auteurs présents dans le catalogue
+    books.forEach((b) => {
+      const a = b.author?.trim() || "Auteur non spécifié"
+      if (!map.has(a)) {
+        map.set(a, { author: a, revenue: 0, units: 0, booksCount: 0 })
+      }
+      map.get(a)!.booksCount += 1
+    })
+
+    // Si apiStats.top_books est fourni par le backend, incorporer ces ventes officielles
+    if (apiStats?.top_books && apiStats.top_books.length > 0) {
+      apiStats.top_books.forEach((tb) => {
+        const a = tb.author?.trim() || bookById.get(tb.id)?.author?.trim() || "Auteur non spécifié"
+        if (!map.has(a)) {
+          map.set(a, { author: a, revenue: 0, units: 0, booksCount: 1 })
+        }
+        const item = map.get(a)!
+        item.revenue += tb.revenue || 0
+        item.units += tb.units_sold || 0
+        if (!item.topBookTitle) item.topBookTitle = tb.title
+      })
+    } else {
+      // Calculer à partir des commandes payées réelles
+      currentOrders
+        .filter((o) => o.status === "paid")
+        .forEach((o) => {
+          o.items.forEach((it) => {
+            const b = bookById.get(it.bookId)
+            const a = b?.author?.trim() || "Auteur non spécifié"
+            if (!map.has(a)) {
+              map.set(a, { author: a, revenue: 0, units: 0, booksCount: 1 })
+            }
+            const item = map.get(a)!
+            const price = b?.price || 0
+            item.revenue += price * it.quantity
+            item.units += it.quantity
+            if (!item.topBookTitle && b?.title) item.topBookTitle = b.title
+          })
+        })
+    }
+
+    return Array.from(map.values())
+  }, [books, apiStats, currentOrders])
+
+  // Auteurs triés selon le critère interactif
+  const sortedAuthorStats = useMemo(() => {
+    return [...authorStats].sort((a, b) => {
+      let cmp = 0
+      if (authorSortBy === "revenue") cmp = b.revenue - a.revenue
+      else if (authorSortBy === "units") cmp = b.units - a.units
+      else if (authorSortBy === "books") cmp = b.booksCount - a.booksCount
+      else if (authorSortBy === "name") cmp = a.author.localeCompare(b.author, "fr")
+      return authorSortOrder === "asc" ? -cmp : cmp
+    })
+  }, [authorStats, authorSortBy, authorSortOrder])
+
+  // Ventes mensuelles affichées (globales ou filtrées pour l'auteur sélectionné)
+  const displayedMonthlySales = useMemo(() => {
+    if (selectedAuthor === "all") return monthlySales
+
+    const bookById = new Map(books.map((b) => [b.id, b]))
+    const now = new Date()
+    const buckets: { label: string; value: number; orders_count?: number }[] = []
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+      buckets.push({
+        label: d.toLocaleDateString("fr-FR", { month: "short" }).replace(".", ""),
+        value: 0,
+        orders_count: 0,
+      })
+    }
+
+    currentOrders
+      .filter((o) => o.status === "paid")
+      .forEach((o) => {
+        const d = new Date(o.date)
+        const idx = (now.getFullYear() - d.getFullYear()) * 12 + (now.getMonth() - d.getMonth())
+        if (idx >= 0 && idx <= 5) {
+          let authorTotal = 0
+          let hasAuthorItem = false
+          o.items.forEach((it) => {
+            const b = bookById.get(it.bookId)
+            if (b && b.author?.trim().toLowerCase() === selectedAuthor.trim().toLowerCase()) {
+              authorTotal += (b.price || 0) * it.quantity
+              hasAuthorItem = true
+            }
+          })
+          if (hasAuthorItem) {
+            buckets[5 - idx].value += authorTotal
+            buckets[5 - idx].orders_count = (buckets[5 - idx].orders_count || 0) + 1
+          }
+        }
+      })
+
+    return buckets
+  }, [selectedAuthor, monthlySales, books, currentOrders])
+
+  const maxDisplayedMonthly = Math.max(1, ...displayedMonthlySales.map((m) => m.value))
+
+  // Répartition par catégorie (globale ou filtrée pour l'auteur sélectionné)
+  const displayedCategorySales = useMemo(() => {
+    if (selectedAuthor === "all") return categorySales
+
+    const authorBooks = books.filter(
+      (b) => b.author?.trim().toLowerCase() === selectedAuthor.trim().toLowerCase(),
+    )
+    const bookById = new Map(books.map((b) => [b.id, b]))
+    const catMap = new Map<string, number>()
+
+    currentOrders
+      .filter((o) => o.status === "paid")
+      .forEach((o) => {
+        o.items.forEach((it) => {
+          const b = bookById.get(it.bookId)
+          if (b && b.author?.trim().toLowerCase() === selectedAuthor.trim().toLowerCase()) {
+            const cat = b.category || "Autre"
+            catMap.set(cat, (catMap.get(cat) || 0) + (b.price || 0) * it.quantity)
+          }
+        })
+      })
+
+    if (catMap.size === 0) {
+      authorBooks.forEach((b) => {
+        catMap.set(b.category, (catMap.get(b.category) || 0) + 1)
+      })
+    }
+
+    const arr = [...catMap.entries()]
+      .map(([label, value]) => ({ label, value }))
+      .sort((a, b) => b.value - a.value)
+    const total = arr.reduce((s, c) => s + c.value, 0) || 1
+    return arr.map((c) => ({ ...c, pct: Math.round((c.value / total) * 100) }))
+  }, [selectedAuthor, categorySales, books, currentOrders])
+
+  const displayedRevenue = useMemo(() => {
+    if (selectedAuthor === "all") return revenue
+    const stat = authorStats.find((a) => a.author.toLowerCase() === selectedAuthor.toLowerCase())
+    return stat ? stat.revenue : 0
+  }, [selectedAuthor, revenue, authorStats])
+
+  const displayedUnits = useMemo(() => {
+    if (selectedAuthor === "all") return paidOrdersCount
+    const stat = authorStats.find((a) => a.author.toLowerCase() === selectedAuthor.toLowerCase())
+    return stat ? stat.units : 0
+  }, [selectedAuthor, paidOrdersCount, authorStats])
+
+  const displayedBooksCount = useMemo(() => {
+    if (selectedAuthor === "all") return publishedCount
+    return books.filter((b) => b.author?.trim().toLowerCase() === selectedAuthor.trim().toLowerCase()).length
+  }, [selectedAuthor, publishedCount, books])
+
+  const displayedTopBooks = useMemo(() => {
+    if (selectedAuthor === "all") return topBooksList
+    return topBooksList.filter(
+      (b) => b.author?.trim().toLowerCase() === selectedAuthor.trim().toLowerCase(),
+    )
+  }, [selectedAuthor, topBooksList])
+
   const navItems: AdminNavItem[] = [
     {
       id: "dashboard",
@@ -3612,22 +3785,31 @@ function AdminView({
 
   const stats = [
     {
-      label: "Revenu total",
-      value: formatPrice(revenue),
+      label: selectedAuthor === "all" ? "Revenu total" : `Revenu (${selectedAuthor})`,
+      value: formatPrice(displayedRevenue),
       icon: <Wallet className="w-5 h-5" aria-hidden="true" />,
-      hint: `${paidOrdersCount} commande${paidOrdersCount > 1 ? "s" : ""} payée${paidOrdersCount > 1 ? "s" : ""}`,
+      hint:
+        selectedAuthor === "all"
+          ? `${paidOrdersCount} commande${paidOrdersCount > 1 ? "s" : ""} payée${paidOrdersCount > 1 ? "s" : ""}`
+          : `${displayedUnits} exemplaire${displayedUnits > 1 ? "s" : ""} vendu${displayedUnits > 1 ? "s" : ""}`,
     },
     {
-      label: "Commandes",
-      value: `${totalOrdersCount}`,
+      label: selectedAuthor === "all" ? "Commandes" : "Ventes de l'auteur",
+      value: `${selectedAuthor === "all" ? totalOrdersCount : displayedUnits}`,
       icon: <ClipboardList className="w-5 h-5" aria-hidden="true" />,
-      hint: `${pendingOrdersCount} en attente${cancelledOrdersCount > 0 ? ` · ${cancelledOrdersCount} annulée${cancelledOrdersCount > 1 ? "s" : ""}` : ""}`,
+      hint:
+        selectedAuthor === "all"
+          ? `${pendingOrdersCount} en attente${cancelledOrdersCount > 0 ? ` · ${cancelledOrdersCount} annulée${cancelledOrdersCount > 1 ? "s" : ""}` : ""}`
+          : `sur les titres de ${selectedAuthor}`,
     },
     {
-      label: "Titres publiés",
-      value: `${publishedCount}`,
+      label: selectedAuthor === "all" ? "Titres publiés" : "Titres de l'auteur",
+      value: `${displayedBooksCount}`,
       icon: <BookText className="w-5 h-5" aria-hidden="true" />,
-      hint: `${draftCount} en brouillon`,
+      hint:
+        selectedAuthor === "all"
+          ? `${draftCount} en brouillon`
+          : `au catalogue YéYéBook`,
     },
     {
       label: "Note moyenne",
@@ -3636,6 +3818,24 @@ function AdminView({
       hint: `sur ${apiStats ? apiStats.books_total : books.length} titres du catalogue`,
     },
   ]
+
+  if (editing || creating) {
+    return (
+      <AdminBookEditor
+        book={editing}
+        existingBooks={books}
+        onClose={() => {
+          setEditing(null)
+          setCreating(false)
+        }}
+        onSave={(b) => {
+          onSaveBook(b)
+          setEditing(null)
+          setCreating(false)
+        }}
+      />
+    )
+  }
 
   return (
     <div className="min-h-screen bg-surface-secondary-bg lg:grid lg:grid-cols-[264px_1fr]">
@@ -3728,12 +3928,13 @@ function AdminView({
         <main className="flex-1 px-xl md:px-2xl py-2xl animate-fade">
           {}
           {tab === "dashboard" && (
-            <div className="flex flex-col gap-2xl max-w-[1100px]">
+            <div className="flex flex-col gap-2xl w-full max-w-[1600px] mx-auto">
+              {/* Cartes KPI réactives */}
               <div className="grid grid-cols-2 xl:grid-cols-4 gap-lg">
                 {stats.map((s) => (
                   <div
                     key={s.label}
-                    className="rounded-corner-lg bg-surface-bg border border-border-secondary p-xl flex flex-col gap-md"
+                    className="rounded-corner-xl bg-surface-bg border border-border-secondary p-xl flex flex-col gap-md shadow-xs"
                   >
                     <span className="inline-flex items-center justify-center w-10 h-10 rounded-corner-md bg-brand-tertiary text-brand-primary">
                       {s.icon}
@@ -3753,68 +3954,165 @@ function AdminView({
                 ))}
               </div>
 
-              <div className="grid lg:grid-cols-[1.4fr_1fr] gap-2xl">
-                {}
-                <section className="rounded-corner-lg bg-surface-bg border border-border-secondary p-xl">
-                  <div className="flex items-center justify-between mb-xl">
-                    <h2 className="text-label font-semibold text-text-primary">
-                      Ventes des 6 derniers mois
+              {/* Bandeau de Filtrage Interactif par Auteur */}
+              <div className="rounded-corner-xl bg-surface-bg border border-border-secondary p-xl flex flex-col md:flex-row md:items-center justify-between gap-lg shadow-xs">
+                <div className="flex items-center gap-md">
+                  <span className="w-10 h-10 rounded-corner-md bg-brand-primary/10 text-brand-primary flex items-center justify-center shrink-0">
+                    <User className="w-5 h-5" />
+                  </span>
+                  <div>
+                    <h2 className="text-label-sm font-semibold text-text-primary">
+                      Filtrer les graphiques par auteur
                     </h2>
-                    <span className="text-video-title text-text-tertiary">
-                      Revenu mensuel
+                    <p className="text-video-title text-text-tertiary">
+                      Isolez les données de ventes et de revenus d'un auteur ou visualisez les métriques globales.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-md flex-wrap">
+                  <div className="relative min-w-[240px]">
+                    <select
+                      value={selectedAuthor}
+                      onChange={(e) => setSelectedAuthor(e.target.value)}
+                      aria-label="Sélectionner un auteur pour filtrer les graphiques"
+                      className="w-full text-label-sm font-medium bg-surface-secondary-bg border border-border-secondary rounded-corner-md px-lg py-md text-text-primary focus:border-brand-primary focus:outline-none cursor-pointer"
+                    >
+                      <option value="all">Tous les auteurs (Global)</option>
+                      {authorStats.map((a) => (
+                        <option key={a.author} value={a.author}>
+                          {a.author} ({a.booksCount} {a.booksCount > 1 ? "titres" : "titre"}{a.revenue > 0 ? ` · ${formatPrice(a.revenue)}` : ""})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {selectedAuthor !== "all" && (
+                    <button
+                      onClick={() => setSelectedAuthor("all")}
+                      className="text-video-title font-semibold text-brand-primary hover:underline cursor-pointer inline-flex items-center gap-xs px-md py-sm rounded-corner-md bg-brand-primary/10 transition-colors"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                      Réinitialiser ({selectedAuthor})
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Première grille : Graphique des Ventes mensuelles & Répartition par catégorie */}
+              <div className="grid lg:grid-cols-[1.6fr_1fr] gap-2xl">
+                {/* Ventes mensuelles (hauteur 260px, aéré et panoramique) */}
+                <section className="rounded-corner-xl bg-surface-bg border border-border-secondary p-xl md:p-2xl shadow-xs flex flex-col justify-between">
+                  <div className="flex flex-wrap items-center justify-between gap-sm mb-xl">
+                    <div>
+                      <h2 className="text-title font-semibold text-text-primary flex items-center gap-xs">
+                        <TrendingUp className="w-4 h-4 text-brand-primary" />
+                        {selectedAuthor === "all"
+                          ? "Évolution des ventes (6 derniers mois)"
+                          : `Ventes mensuelles — ${selectedAuthor}`}
+                      </h2>
+                      <p className="text-video-title text-text-tertiary">
+                        {selectedAuthor === "all"
+                          ? "Chiffre d'affaires global généré par l'ensemble des titres"
+                          : `Revenus générés par les commandes des livres de ${selectedAuthor}`}
+                      </p>
+                    </div>
+                    <span className="text-video-title font-semibold px-md py-xs rounded-corner-full bg-brand-tertiary text-brand-primary">
+                      Revenu mensuel en FCFA
                     </span>
                   </div>
-                  <div
-                    className="flex items-end justify-between gap-md h-[180px]"
-                    role="img"
-                    aria-label="Graphique des ventes mensuelles"
-                  >
-                    {monthlySales.map((m) => (
-                      <div
-                        key={m.label}
-                        className="flex-1 flex flex-col items-center gap-sm h-full justify-end"
-                      >
-                        <span className="text-video-title text-text-tertiary tabular-nums">
-                          {m.value > 0 ? formatPrice(m.value) : ""}
-                        </span>
-                        <div
-                          className="w-full max-w-[44px] rounded-t-corner-sm bg-brand-primary transition-all"
-                          style={{
-                            height: `${Math.max(4, (m.value / maxMonthly) * 100)}%`,
-                          }}
-                        />
-                        <span className="text-video-title text-text-secondary capitalize">
-                          {m.label}
-                        </span>
-                      </div>
-                    ))}
+
+                  <div className="relative pt-lg pb-sm">
+                    {/* Repères horizontaux en pointillés */}
+                    <div className="absolute inset-0 flex flex-col justify-between pointer-events-none opacity-30 pb-8">
+                      <div className="border-b border-dashed border-border-secondary w-full" />
+                      <div className="border-b border-dashed border-border-secondary w-full" />
+                      <div className="border-b border-dashed border-border-secondary w-full" />
+                      <div className="border-b border-dashed border-border-secondary w-full" />
+                    </div>
+
+                    <div
+                      className="relative flex items-end justify-between gap-md sm:gap-xl h-[260px] z-10"
+                      role="img"
+                      aria-label="Graphique des ventes mensuelles"
+                    >
+                      {displayedMonthlySales.map((m) => {
+                        const heightPct = Math.max(6, (m.value / maxDisplayedMonthly) * 100)
+                        return (
+                          <div
+                            key={m.label}
+                            className="flex-1 flex flex-col items-center gap-sm h-full justify-end group cursor-pointer"
+                          >
+                            <span className="text-video-title font-bold text-brand-primary tabular-nums opacity-0 group-hover:opacity-100 transition-opacity">
+                              {m.value > 0 ? formatPrice(m.value) : "0 FCFA"}
+                            </span>
+
+                            <div
+                              className="w-full max-w-[56px] rounded-t-corner-md bg-gradient-to-t from-brand-secondary to-brand-primary transition-all duration-300 group-hover:brightness-110 shadow-xs relative"
+                              style={{ height: `${heightPct}%` }}
+                            >
+                              {m.value > 0 && (
+                                <div className="absolute -top-7 left-1/2 -translate-x-1/2 hidden md:block text-[11px] font-bold text-text-primary whitespace-nowrap bg-surface-bg/90 px-1 rounded shadow-xs border border-border-secondary">
+                                  {formatPrice(m.value)}
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="flex flex-col items-center text-center mt-xs">
+                              <span className="text-label-sm font-semibold text-text-primary capitalize">
+                                {m.label}
+                              </span>
+                              {m.orders_count !== undefined && m.orders_count > 0 && (
+                                <span className="text-[10px] text-text-tertiary">
+                                  {m.orders_count} vte{m.orders_count > 1 ? "s" : ""}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
                   </div>
                 </section>
 
-                {}
-                <section className="rounded-corner-lg bg-surface-bg border border-border-secondary p-xl">
-                  <h2 className="text-label font-semibold text-text-primary mb-xl">
-                    Répartition par catégorie
-                  </h2>
-                  {categorySales.length === 0 ? (
-                    <p className="text-label-sm text-text-tertiary">
-                      Aucune vente pour le moment.
+                {/* Répartition par catégorie */}
+                <section className="rounded-corner-xl bg-surface-bg border border-border-secondary p-xl md:p-2xl shadow-xs flex flex-col">
+                  <div className="mb-xl">
+                    <h2 className="text-title font-semibold text-text-primary">
+                      {selectedAuthor === "all" ? "Répartition par catégorie" : `Catégories de ${selectedAuthor}`}
+                    </h2>
+                    <p className="text-video-title text-text-tertiary">
+                      Part des revenus et répartition selon les genres.
                     </p>
+                  </div>
+
+                  {displayedCategorySales.length === 0 ? (
+                    <div className="flex-1 flex flex-col items-center justify-center p-xl text-center text-text-tertiary">
+                      <BookOpen className="w-8 h-8 mb-sm opacity-40" />
+                      <p className="text-label-sm">Aucune donnée disponible pour cette sélection.</p>
+                    </div>
                   ) : (
-                    <ul className="flex flex-col gap-lg">
-                      {categorySales.map((c) => (
+                    <ul className="flex flex-col gap-lg flex-1 justify-center">
+                      {displayedCategorySales.map((c) => (
                         <li key={c.label}>
                           <div className="flex items-center justify-between mb-xs">
                             <span className="text-label-sm font-medium text-text-primary truncate">
                               {c.label}
                             </span>
-                            <span className="text-video-title text-text-tertiary tabular-nums shrink-0 ml-md">
-                              {c.pct}%
-                            </span>
+                            <div className="flex items-center gap-sm">
+                              {c.value > 0 && (
+                                <span className="text-video-title text-text-secondary font-medium tabular-nums">
+                                  {formatPrice(c.value)}
+                                </span>
+                              )}
+                              <span className="text-video-title font-bold text-brand-primary tabular-nums">
+                                {c.pct}%
+                              </span>
+                            </div>
                           </div>
-                          <div className="h-2 rounded-corner-full bg-brand-tertiary overflow-hidden">
+                          <div className="h-2.5 rounded-corner-full bg-brand-tertiary/60 overflow-hidden">
                             <div
-                              className="h-full rounded-corner-full bg-brand-primary transition-all"
+                              className="h-full rounded-corner-full bg-gradient-to-r from-brand-secondary to-brand-primary transition-all duration-300"
                               style={{ width: `${c.pct}%` }}
                             />
                           </div>
@@ -3825,9 +4123,146 @@ function AdminView({
                 </section>
               </div>
 
-              <div className="grid lg:grid-cols-[1.4fr_1fr] gap-2xl">
-                {}
-                <section className="rounded-corner-lg bg-surface-bg border border-border-secondary overflow-hidden">
+              {/* Deuxième section : Performances et Ventes par Auteur (Triable !) */}
+              <section className="rounded-corner-xl bg-surface-bg border border-border-secondary p-xl md:p-2xl shadow-xs">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-md mb-xl">
+                  <div>
+                    <h2 className="text-title font-semibold text-text-primary flex items-center gap-xs">
+                      <User className="w-5 h-5 text-brand-primary" />
+                      Performances et classement des ventes par auteur
+                    </h2>
+                    <p className="text-video-title text-text-tertiary">
+                      Comparez les chiffres d'affaires, les exemplaires vendus et le nombre d'ouvrages publiés par auteur.
+                    </p>
+                  </div>
+
+                  {/* Boutons de tri interactifs */}
+                  <div className="flex items-center gap-xs flex-wrap" role="group" aria-label="Trier les auteurs">
+                    <span className="text-video-title font-semibold text-text-tertiary mr-xs">Trier par :</span>
+                    {(
+                      [
+                        { id: "revenue", label: "Chiffre d'affaires" },
+                        { id: "units", label: "Exemplaires vendus" },
+                        { id: "books", label: "Nombre de titres" },
+                        { id: "name", label: "Nom d'auteur" },
+                      ] as const
+                    ).map((opt) => {
+                      const active = authorSortBy === opt.id
+                      return (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          onClick={() => {
+                            if (authorSortBy === opt.id) {
+                              setAuthorSortOrder((o) => (o === "asc" ? "desc" : "asc"))
+                            } else {
+                              setAuthorSortBy(opt.id)
+                              setAuthorSortOrder(opt.id === "name" ? "asc" : "desc")
+                            }
+                          }}
+                          className={`px-md py-xs rounded-corner-md text-video-title font-semibold transition-all cursor-pointer inline-flex items-center gap-1 ${
+                            active
+                              ? "bg-brand-primary text-white shadow-xs"
+                              : "bg-surface-secondary-bg text-text-secondary hover:bg-surface-hover hover:text-text-primary"
+                          }`}
+                        >
+                          <span>{opt.label}</span>
+                          {active && (
+                            <span className="text-[10px]">{authorSortOrder === "asc" ? "▲" : "▼"}</span>
+                          )}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                {/* Tableau comparatif des auteurs avec barres proportionnelles */}
+                {sortedAuthorStats.length === 0 ? (
+                  <p className="text-label-sm text-text-tertiary text-center py-xl">
+                    Aucun auteur répertorié pour le moment.
+                  </p>
+                ) : (
+                  <div className="flex flex-col gap-md">
+                    {sortedAuthorStats.map((item, index) => {
+                      const maxRevenueAmongAuthors = Math.max(1, ...authorStats.map((a) => a.revenue))
+                      const barPercent = Math.max(4, Math.round((item.revenue / maxRevenueAmongAuthors) * 100))
+                      const isSelected = selectedAuthor.toLowerCase() === item.author.toLowerCase()
+
+                      return (
+                        <div
+                          key={item.author}
+                          className={`p-md md:p-lg rounded-corner-lg border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-md ${
+                            isSelected
+                              ? "border-brand-primary bg-brand-primary/5 ring-1 ring-brand-primary/30"
+                              : "border-border-secondary bg-surface-secondary-bg/30 hover:bg-surface-secondary-bg hover:border-brand-primary/40"
+                          }`}
+                        >
+                          <div className="flex items-center gap-md min-w-[240px] sm:w-[280px]">
+                            <span className="w-6 text-center text-video-title font-bold text-text-tertiary">
+                              #{index + 1}
+                            </span>
+                            <div className="w-10 h-10 rounded-corner-full bg-brand-primary/10 text-brand-primary font-bold text-label-sm flex items-center justify-center shrink-0">
+                              {item.author.charAt(0).toUpperCase()}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-label-sm font-semibold text-text-primary truncate">
+                                {item.author}
+                              </p>
+                              <p className="text-video-title text-text-tertiary truncate">
+                                {item.booksCount} {item.booksCount > 1 ? "titres publiés" : "titre publié"}
+                                {item.topBookTitle ? ` · ex: ${item.topBookTitle}` : ""}
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Barre horizontale proportionnelle */}
+                          <div className="flex-1 min-w-[160px] hidden md:flex flex-col gap-xs px-lg">
+                            <div className="h-2.5 rounded-corner-full bg-border-secondary overflow-hidden">
+                              <div
+                                className="h-full rounded-corner-full bg-gradient-to-r from-brand-secondary to-brand-primary transition-all duration-300"
+                                style={{ width: `${barPercent}%` }}
+                              />
+                            </div>
+                            <div className="flex items-center justify-between text-[11px] text-text-tertiary">
+                              <span>{item.units} exemplaire{item.units > 1 ? "s" : ""} vendu{item.units > 1 ? "s" : ""}</span>
+                              <span>{item.revenue > 0 ? `${Math.round((item.revenue / (revenue || 1)) * 100)}% des ventes` : "0%"}</span>
+                            </div>
+                          </div>
+
+                          {/* Chiffre d'affaires et bouton d'action rapide */}
+                          <div className="flex items-center justify-between sm:justify-end gap-lg shrink-0">
+                            <div className="text-right">
+                              <span className="text-label-sm font-bold text-text-primary tabular-nums block">
+                                {formatPrice(item.revenue)}
+                              </span>
+                              <span className="text-video-title text-brand-primary font-medium block">
+                                {item.units} vente{item.units > 1 ? "s" : ""}
+                              </span>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => setSelectedAuthor(isSelected ? "all" : item.author)}
+                              className={`px-md py-xs rounded-corner-md text-video-title font-semibold border transition-all cursor-pointer ${
+                                isSelected
+                                  ? "bg-brand-primary text-white border-brand-primary"
+                                  : "border-border-secondary bg-surface-bg text-text-secondary hover:border-brand-primary hover:text-brand-primary"
+                              }`}
+                            >
+                              {isSelected ? "Sélectionné ✓" : "Filtrer"}
+                            </button>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </section>
+
+              {/* Troisième grille : Commandes récentes & Meilleures ventes (pleine largeur sur 2 colonnes équilibrées) */}
+              <div className="grid lg:grid-cols-2 gap-2xl">
+                {/* Commandes récentes */}
+                <section className="rounded-corner-xl bg-surface-bg border border-border-secondary overflow-hidden shadow-xs">
                   <div className="flex items-center justify-between px-xl py-lg border-b border-border-secondary">
                     <h2 className="text-label font-semibold text-text-primary">
                       Commandes récentes
@@ -3840,10 +4275,10 @@ function AdminView({
                     </button>
                   </div>
                   <ul className="divide-y divide-border-secondary">
-                    {currentOrders.slice(0, 5).map((o) => (
+                    {currentOrders.slice(0, 6).map((o) => (
                       <li
                         key={o.id}
-                        className="flex items-center justify-between gap-lg px-xl py-md"
+                        className="flex items-center justify-between gap-lg px-xl py-md hover:bg-surface-secondary-bg/40 transition-colors"
                       >
                         <div className="min-w-0">
                           <p className="text-label-sm font-semibold text-text-primary truncate">
@@ -3864,20 +4299,20 @@ function AdminView({
                   </ul>
                 </section>
 
-                {}
-                <section className="rounded-corner-lg bg-surface-bg border border-border-secondary overflow-hidden">
+                {/* Meilleures ventes */}
+                <section className="rounded-corner-xl bg-surface-bg border border-border-secondary overflow-hidden shadow-xs">
                   <div className="px-xl py-lg border-b border-border-secondary">
                     <h2 className="text-label font-semibold text-text-primary">
-                      Meilleures ventes
+                      {selectedAuthor === "all" ? "Meilleures ventes" : `Titres vendus de ${selectedAuthor}`}
                     </h2>
                   </div>
-                  <ul className="flex flex-col">
-                    {topBooksList.map((item, i) => (
+                  <ul className="flex flex-col divide-y divide-border-secondary">
+                    {displayedTopBooks.slice(0, 6).map((item, i) => (
                       <li
                         key={item.id}
-                        className="flex items-center gap-lg px-xl py-md border-b border-border-secondary last:border-b-0"
+                        className="flex items-center gap-lg px-xl py-md hover:bg-surface-secondary-bg/40 transition-colors"
                       >
-                        <span className="text-label-sm font-semibold text-text-tertiary w-4">
+                        <span className="text-label-sm font-bold text-text-tertiary w-4">
                           {i + 1}
                         </span>
                         <div className="w-8 h-12 rounded-corner-sm overflow-hidden bg-brand-tertiary border border-border-secondary shrink-0">
@@ -3897,7 +4332,7 @@ function AdminView({
                           </p>
                         </div>
                         <div className="text-right">
-                          <span className="text-label-sm font-semibold text-brand-primary whitespace-nowrap block">
+                          <span className="text-label-sm font-bold text-brand-primary whitespace-nowrap block">
                             {item.units} vendu{item.units > 1 ? "s" : ""}
                           </span>
                           {item.revenue > 0 && (
@@ -3916,7 +4351,7 @@ function AdminView({
 
           {}
           {tab === "catalog" && (
-            <div className="flex flex-col gap-lg max-w-[1100px]">
+            <div className="flex flex-col gap-lg w-full max-w-[1600px] mx-auto">
               <div className="flex items-center justify-between gap-lg">
                 <div className="w-full max-w-[360px]">
                   <SearchInput
@@ -4085,7 +4520,7 @@ function AdminView({
 
           {}
           {tab === "orders" && (
-            <div className="flex flex-col gap-lg max-w-[1100px]">
+            <div className="flex flex-col gap-lg w-full max-w-[1600px] mx-auto">
               <div className="flex flex-wrap items-center justify-between gap-md">
                 <div
                   className="flex flex-wrap gap-sm"
@@ -4303,704 +4738,6 @@ function AdminView({
         </main>
       </div>
 
-      {(editing || creating) && (
-        <BookForm
-          book={editing}
-          existingIds={books.map((b) => b.id)}
-          onClose={() => {
-            setEditing(null)
-            setCreating(false)
-          }}
-          onSave={(b) => {
-            onSaveBook(b)
-            setEditing(null)
-            setCreating(false)
-          }}
-        />
-      )}
-    </div>
-  )
-}
-
-function BookForm({
-  book,
-  existingIds,
-  onClose,
-  onSave,
-}: {
-  book: Book | null
-  existingIds: string[]
-  onClose: () => void
-  onSave: (book: Book) => void
-}) {
-  const [form, setForm] = useState({
-    title: book?.title ?? "",
-    author: book?.author ?? "",
-    category: book?.category ?? "Roman",
-    price: book ? String(book.price) : "",
-    pages: book ? String(book.pages) : "",
-    year: book ? String(book.year) : String(new Date().getFullYear()),
-    cover: book?.cover ?? "",
-    description: book?.description ?? "",
-  })
-  const set = (k: keyof typeof form, v: string) =>
-    setForm((f) => ({ ...f, [k]: v }))
-  const fileInputRef = useRef<HTMLInputElement>(null)
-  const [isDragging, setIsDragging] = useState(false)
-  const [uploadError, setUploadError] = useState<string | null>(null)
-  const [coverUploading, setCoverUploading] = useState(false)
-  const [useUrlMode, setUseUrlMode] = useState(false)
-
-  const [fileUrl, setFileUrl] = useState<string>(book?.file_url ?? "")
-  const [epubFilename, setEpubFilename] = useState<string>(
-    book?.epub_filename ?? (book ? `${book.slug || "livre"}.epub` : ""),
-  )
-  const [epubFileSize, setEpubFileSize] = useState<number>(book?.file_size ?? 0)
-  const [epubValidated, setEpubValidated] = useState<boolean>(
-    Boolean(book?.file_url || book?.has_file),
-  )
-
-  const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5 Mo
-  const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"]
-
-  const handleFile = async (file: File) => {
-    setUploadError(null)
-    if (!ALLOWED_TYPES.includes(file.type)) {
-      setUploadError("Format non supporté. Veuillez choisir une image JPG, PNG ou WEBP.")
-      return
-    }
-    if (file.size > MAX_FILE_SIZE) {
-      setUploadError("Le fichier est trop lourd (5 Mo maximum).")
-      return
-    }
-
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      const result = e.target?.result as string
-      if (result) {
-        set("cover", result)
-      }
-    }
-    reader.onerror = () => {
-      setUploadError("Erreur lors de la lecture locale du fichier.")
-    }
-    reader.readAsDataURL(file)
-
-    setCoverUploading(true)
-    try {
-      const res = await uploadCoverApi(file)
-      if (res && res.url) {
-        set("cover", res.url)
-      }
-    } catch (err: any) {
-      console.error("[Cover upload error]", err)
-      const errorMsg =
-        err?.message || "Erreur lors du téléversement de la couverture."
-      setUploadError(errorMsg)
-    } finally {
-      setCoverUploading(false)
-    }
-  }
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setIsDragging(true)
-  }
-
-  const handleDragLeave = (e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setIsDragging(false)
-  }
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setIsDragging(false)
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      void handleFile(e.dataTransfer.files[0])
-    }
-  }
-
-  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      void handleFile(e.target.files[0])
-    }
-  }
-
-  // Fichier ePub (Cahier des charges Phase 1: ePub uniquement, 50 Mo max)
-  const epubInputRef = useRef<HTMLInputElement>(null)
-  const [isEpubDragging, setIsEpubDragging] = useState(false)
-  const [epubError, setEpubError] = useState<string | null>(null)
-  const [epubUploading, setEpubUploading] = useState(false)
-  const [epubProgress, setEpubProgress] = useState(0)
-  const [epubStatusText, setEpubStatusText] = useState("")
-  const [epubFile, setEpubFile] = useState<{ name: string; size: string } | null>(
-    book ? { name: `${book.slug || "livre"}.epub`, size: "ePub 3" } : null,
-  )
-  const epubTimerRef = useRef<NodeJS.Timeout[]>([])
-
-  const clearEpubTimers = () => {
-    epubTimerRef.current.forEach((t) => clearTimeout(t))
-    epubTimerRef.current = []
-  }
-
-  useEffect(() => {
-    return () => clearEpubTimers()
-  }, [])
-
-  const MAX_EPUB_SIZE = 50 * 1024 * 1024 // 50 Mo
-
-  const handleEpubFile = async (file: File) => {
-    setEpubError(null)
-    const isEpub =
-      file.name.toLowerCase().endsWith(".epub") ||
-      file.type === "application/epub+zip"
-    if (!isEpub) {
-      setEpubError(
-        "Format non supporté. Seuls les fichiers au format .epub sont acceptés (Cahier des charges Phase 1).",
-      )
-      return
-    }
-    if (file.size > MAX_EPUB_SIZE) {
-      setEpubError(
-        "Le fichier est trop lourd (50 Mo maximum selon le cahier des charges).",
-      )
-      return
-    }
-
-    clearEpubTimers()
-    setEpubUploading(true)
-    setEpubValidated(false)
-    setEpubProgress(25) // 1. Départ immédiat à 25% (progression psychologique)
-    setEpubStatusText("Lecture et transmission de l'ePub au serveur...")
-
-    let progressVal = 25
-    const progressInterval = setInterval(() => {
-      if (progressVal < 50) {
-        progressVal += 5
-        setEpubProgress(progressVal)
-        setEpubStatusText("Contrôle d'intégrité par le serveur...")
-      }
-    }, 180)
-
-    try {
-      const res = await uploadEpubApi(file)
-      clearInterval(progressInterval)
-
-      setEpubProgress(75)
-      setEpubStatusText("Téléversement accéléré en cours...")
-      await new Promise((r) => setTimeout(r, 200))
-      setEpubProgress(100)
-      setEpubStatusText("Fichier ePub validé par le serveur !")
-      await new Promise((r) => setTimeout(r, 250))
-
-      setFileUrl(res.file_url)
-      setEpubFilename(res.filename || file.name)
-      if (res.size_bytes) setEpubFileSize(res.size_bytes)
-      const formattedSize =
-        file.size > 1024 * 1024
-          ? `${(file.size / (1024 * 1024)).toFixed(1)} Mo`
-          : `${Math.round(file.size / 1024)} Ko`
-      setEpubFile({ name: res.filename || file.name, size: formattedSize })
-      setEpubValidated(true)
-    } catch (err: any) {
-      clearInterval(progressInterval)
-      console.error("[ePub upload error]", err)
-      const errorMsg =
-        err?.message ||
-        "Erreur lors du téléversement du fichier ePub. Veuillez vérifier le fichier."
-      setEpubError(errorMsg)
-      setEpubFile(null)
-      setFileUrl("")
-      setEpubValidated(false)
-    } finally {
-      setEpubUploading(false)
-    }
-  }
-
-  const handleEpubDragOver = (e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setIsEpubDragging(true)
-  }
-
-  const handleEpubDragLeave = (e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setIsEpubDragging(false)
-  }
-
-  const handleEpubDrop = (e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setIsEpubDragging(false)
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      void handleEpubFile(e.dataTransfer.files[0])
-    }
-  }
-
-  const handleEpubInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      void handleEpubFile(e.target.files[0])
-    }
-  }
-
-  const categories = CATALOG_CATEGORIES.map(({ value }) => value)
-
-  const missingFields: string[] = []
-  if (!form.title.trim()) missingFields.push("Titre")
-  if (!form.author.trim()) missingFields.push("Auteur")
-  if (!form.price || Number(form.price) <= 0) missingFields.push("Prix")
-  if (!form.cover.trim()) missingFields.push("Couverture")
-  if (!book && !fileUrl && !epubFile) missingFields.push("Fichier ePub")
-
-  const valid = missingFields.length === 0
-
-  const submit = () => {
-    if (!valid || epubUploading || coverUploading) return
-    const id =
-      book?.id ??
-      (typeof crypto !== "undefined" && crypto.randomUUID
-        ? crypto.randomUUID()
-        : `book-${Date.now()}`)
-    const description =
-      form.description.trim() ||
-      `Un titre de ${form.author.trim()} disponible en lecture en ligne sur YéYéBook.`
-    const chapters = book?.chapters ?? []
-    onSave({
-      id,
-      title: form.title.trim(),
-      author: form.author.trim(),
-      category: form.category,
-      price: Number(form.price),
-      pages: Number(form.pages) || 120,
-      year: Number(form.year) || new Date().getFullYear(),
-      rating: book?.rating ?? 0,
-      reviews: book?.reviews ?? 0,
-      cover: form.cover.trim(),
-      file_url: fileUrl || book?.file_url || undefined,
-      epub_filename: epubFilename || book?.epub_filename || epubFile?.name || undefined,
-      has_file: Boolean(fileUrl || book?.has_file),
-      file_size: epubFileSize || book?.file_size || undefined,
-      description,
-      chapters,
-      published: book?.published ?? true,
-    })
-  }
-
-  return (
-    <div
-      className="fixed inset-0 z-[70] flex justify-end"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="book-form-title"
-    >
-      <div
-        className="absolute inset-0 bg-[#100908]/40 animate-fade"
-        onClick={onClose}
-      />
-      <aside className="relative w-full max-w-[480px] h-full bg-surface-bg shadow-2xl flex flex-col animate-slide-in">
-        <div className="flex items-center justify-between px-xl py-lg border-b border-border-secondary">
-          <h2
-            id="book-form-title"
-            className="text-heading font-semibold text-text-primary"
-          >
-            {book ? "Modifier le titre" : "Nouveau titre"}
-          </h2>
-          <button
-            onClick={onClose}
-            aria-label="Fermer"
-            className="inline-flex items-center justify-center w-9 h-9 rounded-corner-full text-text-secondary hover:bg-surface-hover transition-colors cursor-pointer"
-          >
-            <X className="w-5 h-5" aria-hidden="true" />
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto px-xl py-lg flex flex-col gap-lg">
-          <InputField
-            label="Titre"
-            placeholder="Une si longue lettre"
-            value={form.title}
-            onChange={(v) => set("title", v)}
-          />
-          <InputField
-            label="Auteur"
-            placeholder="Mariama Bâ"
-            value={form.author}
-            onChange={(v) => set("author", v)}
-          />
-
-          <div className="flex flex-col gap-sm">
-            <span className="text-label-sm font-medium text-text-primary">
-              Catégorie
-            </span>
-            <div
-              className="flex flex-wrap gap-sm"
-              role="group"
-              aria-label="Catégorie"
-            >
-              {categories.map((c) => {
-                const active = form.category === c
-                return (
-                  <button
-                    key={c}
-                    onClick={() => set("category", c)}
-                    aria-pressed={active}
-                    className={`px-lg py-sm rounded-corner-full text-label-sm font-medium border transition-all cursor-pointer ${
-                      active
-                        ? "bg-brand-primary text-on-brand border-brand-primary"
-                        : "bg-surface-bg text-text-secondary border-border-secondary hover:border-brand-primary"
-                    }`}
-                  >
-                    {c}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-3 gap-md">
-            <InputField
-              label="Prix (FCFA)"
-              placeholder="2500"
-              value={form.price}
-              onChange={(v) => set("price", v.replace(/[^0-9]/g, ""))}
-            />
-            <InputField
-              label="Pages"
-              placeholder="165"
-              value={form.pages}
-              onChange={(v) => set("pages", v.replace(/[^0-9]/g, ""))}
-            />
-            <InputField
-              label="Année"
-              placeholder="1979"
-              value={form.year}
-              onChange={(v) => set("year", v.replace(/[^0-9]/g, ""))}
-            />
-          </div>
-
-          {/* Couverture du livre : Drag & Drop depuis le PC ou URL */}
-          <div className="flex flex-col gap-sm">
-            <div className="flex items-center justify-between">
-              <span className="text-label-sm font-medium text-text-primary">
-                Couverture du livre
-              </span>
-              <button
-                type="button"
-                onClick={() => {
-                  setUseUrlMode(!useUrlMode)
-                  setUploadError(null)
-                }}
-                className="text-video-title font-medium text-brand-primary hover:underline cursor-pointer"
-              >
-                {useUrlMode ? "Glisser-déposer un fichier" : "Saisir une URL web"}
-              </button>
-            </div>
-
-            {useUrlMode ? (
-              <InputField
-                label=""
-                placeholder="https://… (URL directe de l'image)"
-                value={form.cover}
-                onChange={(v) => {
-                  setUploadError(null)
-                  set("cover", v)
-                }}
-              />
-            ) : (
-              <div>
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  accept="image/jpeg,image/png,image/webp"
-                  className="hidden"
-                  onChange={handleFileInputChange}
-                />
-
-                {form.cover ? (
-                  <div className="flex items-center gap-lg p-md rounded-corner-lg border border-border-secondary bg-surface-secondary-bg/60">
-                    <div className="w-16 h-24 rounded-corner-sm overflow-hidden bg-brand-tertiary border border-border-secondary shrink-0 shadow-sm">
-                      <img
-                        src={form.cover}
-                        alt="Aperçu couverture"
-                        className="w-full h-full object-cover"
-                        onError={(e) => {
-                          e.currentTarget.src = ""
-                          setUploadError("Impossible de charger l'image.")
-                        }}
-                      />
-                    </div>
-                    <div className="flex-1 min-w-0 flex flex-col justify-between py-xs">
-                      <div>
-                        <p className="text-label-sm font-semibold text-text-primary flex items-center gap-xs">
-                          <Check className="w-4 h-4 text-emerald-600" />
-                          Couverture prête
-                        </p>
-                        <p className="text-video-title text-text-tertiary mt-0.5">
-                          Format portrait e-book
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-md mt-sm">
-                        <button
-                          type="button"
-                          onClick={() => fileInputRef.current?.click()}
-                          className="text-label-sm text-brand-primary font-medium hover:underline cursor-pointer"
-                        >
-                          Changer le fichier
-                        </button>
-                        <span className="text-border-secondary">·</span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            set("cover", "")
-                            if (fileInputRef.current) fileInputRef.current.value = ""
-                          }}
-                          className="text-label-sm text-danger hover:underline cursor-pointer flex items-center gap-xs"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                          Supprimer
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div
-                    onDragOver={handleDragOver}
-                    onDragLeave={handleDragLeave}
-                    onDrop={handleDrop}
-                    onClick={() => fileInputRef.current?.click()}
-                    className={`border-2 border-dashed rounded-corner-lg p-xl flex flex-col items-center justify-center gap-xs text-center cursor-pointer transition-all ${
-                      isDragging
-                        ? "border-brand-primary bg-brand-primary/10 scale-[1.01]"
-                        : "border-border-primary bg-surface-secondary-bg/40 hover:bg-surface-secondary-bg hover:border-brand-primary"
-                    }`}
-                    role="button"
-                    tabIndex={0}
-                    aria-label="Déposer une image de couverture ou cliquer pour parcourir"
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault()
-                        fileInputRef.current?.click()
-                      }
-                    }}
-                  >
-                    <div className="w-10 h-10 rounded-corner-full bg-brand-tertiary text-brand-primary flex items-center justify-center mb-xs">
-                      <UploadCloud className="w-5 h-5" />
-                    </div>
-                    <p className="text-label-sm font-semibold text-text-primary">
-                      Glissez-déposez la couverture ici
-                    </p>
-                    <p className="text-video-title text-text-secondary">
-                      ou <span className="text-brand-primary underline">parcourez vos fichiers</span>
-                    </p>
-                    <p className="text-[11px] text-text-tertiary mt-xs">
-                      JPG, PNG ou WEBP · 5 Mo max · Ratio 2:3 recommandé
-                    </p>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {uploadError && (
-              <p className="text-video-title text-danger flex items-center gap-xs mt-0.5">
-                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                {uploadError}
-              </p>
-            )}
-          </div>
-
-          {/* Fichier e-book : ePub uniquement (Cahier des charges Phase 1, 50 Mo max) */}
-          <div className="flex flex-col gap-sm">
-            <div className="flex items-center justify-between">
-              <span className="text-label-sm font-medium text-text-primary">
-                Fichier e-book (.epub)
-              </span>
-              <span className="text-[12px] text-text-tertiary">
-                ePub 3 / ePub 2 · 50 Mo max
-              </span>
-            </div>
-
-            <input
-              type="file"
-              ref={epubInputRef}
-              accept=".epub,application/epub+zip"
-              className="hidden"
-              onChange={handleEpubInputChange}
-            />
-
-            {epubUploading ? (
-              /* Barre de progression active et psychologique */
-              <div className="p-lg rounded-corner-lg border border-brand-primary/30 bg-surface-secondary-bg/80 flex flex-col gap-sm animate-fade">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-xs">
-                    <BookOpen className="w-4 h-4 text-brand-primary animate-pulse" />
-                    <span className="text-label-sm font-semibold text-text-primary">
-                      Téléversement du fichier ePub...
-                    </span>
-                  </div>
-                  <span className="text-label-sm font-bold text-brand-primary">
-                    {epubProgress}%
-                  </span>
-                </div>
-
-                {/* Jauge de progression animée */}
-                <div className="w-full h-2 rounded-corner-full bg-border-secondary overflow-hidden">
-                  <div
-                    className="h-full bg-brand-primary rounded-corner-full transition-all duration-200 ease-out"
-                    style={{ width: `${epubProgress}%` }}
-                  />
-                </div>
-
-                <div className="flex items-center justify-between text-video-title text-text-secondary">
-                  <span>{epubStatusText}</span>
-                  <span className="text-text-tertiary">Phase 1 (ePub)</span>
-                </div>
-              </div>
-            ) : epubFile ? (
-              /* Fichier validé et prêt */
-              <div className="flex items-center gap-md p-md rounded-corner-lg border border-border-secondary bg-surface-secondary-bg/60">
-                <div className="w-10 h-10 rounded-corner-md bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 flex items-center justify-center shrink-0">
-                  <BookOpen className="w-5 h-5" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-xs">
-                    <p className="text-label-sm font-semibold text-text-primary truncate">
-                      {epubFile.name}
-                    </p>
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                  </div>
-                  <p className="text-video-title text-text-tertiary">
-                    {epubFile.size} · ePub valide
-                  </p>
-                </div>
-                <div className="flex items-center gap-sm shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => epubInputRef.current?.click()}
-                    className="text-label-sm text-brand-primary hover:underline cursor-pointer"
-                  >
-                    Remplacer
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEpubFile(null)
-                      if (epubInputRef.current) epubInputRef.current.value = ""
-                    }}
-                    aria-label="Supprimer le fichier ePub"
-                    className="text-text-tertiary hover:text-danger p-xs transition-colors cursor-pointer"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-            ) : (
-              /* Zone de glisser-déposer */
-              <div
-                onDragOver={handleEpubDragOver}
-                onDragLeave={handleEpubDragLeave}
-                onDrop={handleEpubDrop}
-                onClick={() => epubInputRef.current?.click()}
-                className={`border-2 border-dashed rounded-corner-lg p-xl flex flex-col items-center justify-center gap-xs text-center cursor-pointer transition-all ${
-                  isEpubDragging
-                    ? "border-brand-primary bg-brand-primary/10 scale-[1.01]"
-                    : "border-border-primary bg-surface-secondary-bg/40 hover:bg-surface-secondary-bg hover:border-brand-primary"
-                }`}
-                role="button"
-                tabIndex={0}
-                aria-label="Déposer un fichier ePub ou cliquer pour parcourir"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault()
-                    epubInputRef.current?.click()
-                  }
-                }}
-              >
-                <div className="w-10 h-10 rounded-corner-full bg-brand-tertiary text-brand-primary flex items-center justify-center mb-xs">
-                  <BookText className="w-5 h-5" />
-                </div>
-                <p className="text-label-sm font-semibold text-text-primary">
-                  Glissez-déposez le fichier ePub ici
-                </p>
-                <p className="text-video-title text-text-secondary">
-                  ou <span className="text-brand-primary underline">parcourez vos fichiers</span>
-                </p>
-                <p className="text-[11px] text-text-tertiary mt-xs">
-                  Fichier .epub uniquement · 50 Mo max (Cahier des charges)
-                </p>
-              </div>
-            )}
-
-            {epubError && (
-              <p className="text-video-title text-danger flex items-center gap-xs mt-0.5">
-                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                {epubError}
-              </p>
-            )}
-          </div>
-
-          <div className="flex flex-col gap-sm">
-            <label
-              htmlFor="book-desc"
-              className="text-label-sm font-medium text-text-primary"
-            >
-              Description
-            </label>
-            <textarea
-              id="book-desc"
-              value={form.description}
-              onChange={(e) => set("description", e.target.value)}
-              rows={5}
-              placeholder="Un résumé de l'œuvre…"
-              className="w-full rounded-corner-md border border-border-secondary bg-surface-bg px-lg py-md text-label-sm text-text-primary placeholder:text-text-tertiary resize-none focus:border-brand-primary transition-colors"
-            />
-          </div>
-        </div>
-
-        <div className="border-t border-border-secondary px-xl py-lg flex flex-col gap-sm">
-          {missingFields.length > 0 && !epubUploading && !coverUploading && (
-            <p className="text-video-title text-text-tertiary flex items-center gap-xs">
-              <Info className="w-3.5 h-3.5 text-brand-primary shrink-0" />
-              <span>
-                Champs requis manquants :{" "}
-                <strong className="text-text-secondary font-medium">
-                  {missingFields.join(", ")}
-                </strong>
-              </span>
-            </p>
-          )}
-
-          <div className="flex items-center gap-md">
-            <Button variant="neutral" onClick={onClose}>
-              Annuler
-            </Button>
-            <div className="flex-1" />
-            <Button
-              variant="primary"
-              iconStart={
-                epubUploading || coverUploading ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Check className="w-4 h-4" />
-                )
-              }
-              disabled={!valid || epubUploading || coverUploading}
-              onClick={submit}
-            >
-              {epubUploading
-                ? "Téléversement ePub…"
-                : coverUploading
-                  ? "Téléversement couverture…"
-                  : book
-                    ? "Enregistrer"
-                    : "Créer le titre"}
-            </Button>
-          </div>
-        </div>
-      </aside>
     </div>
   )
 }
