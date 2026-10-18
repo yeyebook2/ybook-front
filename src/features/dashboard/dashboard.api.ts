@@ -3,7 +3,7 @@ import { createApiHeaders } from "@/lib/api-headers"
 import { getPublicApiBaseUrl } from "@/lib/runtime-env"
 import type { AuthUser } from "@/features/auth/types"
 
-import type { DashboardBook, DashboardResponse } from "./types"
+import type { DashboardBook, DashboardResponse, UserOrder } from "./types"
 
 const API_BASE_URL = getPublicApiBaseUrl()
 const API_PREFIX = "/api/v1"
@@ -106,16 +106,28 @@ function mapBook(book: BackendBook | BackendLibraryItem): DashboardBook {
 async function loadProductionDashboard(
   user: AuthUser,
 ): Promise<DashboardResponse> {
-  const [libraryResponse, booksResponse] = await Promise.all([
+  const [libraryResponse, booksResponse, ordersResponse] = await Promise.all([
     request<CollectionResponse<BackendLibraryItem>>(
-      "/library?page=1&limit=12&sort_by=recent",
+      "/library?page=1&limit=50&sort_by=recent",
     ),
     request<CollectionResponse<BackendBook>>(
-      "/books?page=1&limit=6&sort_order=desc&sort_by=created_at",
+      "/books?page=1&limit=12&sort_order=desc&sort_by=created_at",
+    ),
+    request<{ items?: UserOrder[]; orders?: UserOrder[] }>("/orders").catch(
+      (): { items?: UserOrder[]; orders?: UserOrder[] } => ({ items: [] }),
     ),
   ])
 
   const libraryBooks = libraryResponse.items.map(mapBook)
+  const ownedIds = new Set(
+    libraryResponse.items
+      .map((item) => {
+        const id = item.book?.id ?? item.book_id
+        return id !== undefined && id !== null ? String(id) : null
+      })
+      .filter((id): id is string => Boolean(id)),
+  )
+
   const progressResults = await Promise.all(
     libraryBooks.map(async (book) => {
       try {
@@ -138,19 +150,44 @@ async function loadProductionDashboard(
   const continueReading = progressResults
     .filter((book) => (book.progress ?? 0) > 0 && (book.progress ?? 0) < 100)
     .slice(0, 4)
-  const recommendations = booksResponse.items.map(mapBook).slice(0, 6)
+
+  const recommendations = booksResponse.items
+    .map(mapBook)
+    .filter((book) => !ownedIds.has(String(book.id)))
+    .slice(0, 6)
+
+  const achetes = libraryResponse.total ?? libraryBooks.length
+  const enCours = libraryResponse.items.filter(
+    (i) =>
+      (i.progress_percent ?? i.progress ?? 0) > 0 &&
+      (i.progress_percent ?? i.progress ?? 0) < 100,
+  ).length
+  const termines = libraryResponse.items.filter(
+    (i) => (i.progress_percent ?? i.progress ?? 0) >= 100,
+  ).length
+  const userOrders = ordersResponse.items ?? ordersResponse.orders ?? []
+  const commandes = userOrders.filter((o: UserOrder) =>
+    ["paid", "completed"].includes(o.status),
+  ).length
 
   return {
     user,
     summary: {
-      booksInLibrary: libraryResponse.total ?? libraryBooks.length,
-      readingNow: continueReading.length,
-      completedBooks: progressResults.filter((book) => book.progress === 100)
-        .length,
+      booksInLibrary: achetes,
+      readingNow: enCours,
+      completedBooks: termines,
+      ordersCount: commandes,
     },
     continueReading,
     recommendations,
   }
+}
+
+export async function getMyOrders(): Promise<UserOrder[]> {
+  const response = await request<{ items?: UserOrder[]; orders?: UserOrder[] }>(
+    "/orders",
+  )
+  return response.items ?? response.orders ?? []
 }
 
 export async function getDashboard(user: AuthUser): Promise<DashboardResponse> {

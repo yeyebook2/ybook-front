@@ -5,6 +5,8 @@ import type { AuthUser } from "@/features/auth/types"
 
 type DashboardHeaderProps = {
   user: AuthUser
+  activeTab?: "overview" | "orders" | "profile"
+  onSelectTab?: (tab: "overview" | "orders" | "profile") => void
   onHome: () => void
   onCatalog: () => void
   onLibrary: () => void
@@ -13,6 +15,8 @@ type DashboardHeaderProps = {
 
 export function DashboardHeader({
   user,
+  activeTab = "overview",
+  onSelectTab,
   onHome,
   onCatalog,
   onLibrary,
@@ -36,10 +40,44 @@ export function DashboardHeader({
         >
           <button
             type="button"
-            onClick={onHome}
-            className="rounded-corner-full bg-brand-primary px-lg py-sm text-label-sm font-semibold text-on-brand"
+            onClick={() => onSelectTab?.("overview")}
+            className={`cursor-pointer rounded-corner-full px-lg py-sm text-label-sm font-semibold transition-colors ${
+              activeTab === "overview"
+                ? "bg-brand-primary text-on-brand"
+                : "text-text-secondary hover:bg-surface-hover hover:text-text-primary"
+            }`}
           >
-            Mon espace
+            Aperçu
+          </button>
+          <button
+            type="button"
+            onClick={() => onSelectTab?.("orders")}
+            className={`cursor-pointer rounded-corner-full px-lg py-sm text-label-sm font-semibold transition-colors ${
+              activeTab === "orders"
+                ? "bg-brand-primary text-on-brand"
+                : "text-text-secondary hover:bg-surface-hover hover:text-text-primary"
+            }`}
+          >
+            Mes commandes
+          </button>
+          <button
+            type="button"
+            onClick={() => onSelectTab?.("profile")}
+            className={`cursor-pointer rounded-corner-full px-lg py-sm text-label-sm font-semibold transition-colors ${
+              activeTab === "profile"
+                ? "bg-brand-primary text-on-brand"
+                : "text-text-secondary hover:bg-surface-hover hover:text-text-primary"
+            }`}
+          >
+            Mon profil
+          </button>
+          <span className="mx-xs h-4 w-px bg-border-secondary" />
+          <button
+            type="button"
+            onClick={onLibrary}
+            className="cursor-pointer rounded-corner-full px-lg py-sm text-label-sm font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
+          >
+            Ma bibliothèque
           </button>
           <button
             type="button"
@@ -47,13 +85,6 @@ export function DashboardHeader({
             className="cursor-pointer rounded-corner-full px-lg py-sm text-label-sm font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
           >
             Catalogue
-          </button>
-          <button
-            type="button"
-            onClick={onLibrary}
-            className="cursor-pointer rounded-corner-full px-lg py-sm text-label-sm font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
-          >
-            Ma bibliothèque
           </button>
         </nav>
 

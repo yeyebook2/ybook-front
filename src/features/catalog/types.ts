@@ -1,6 +1,7 @@
 export type Chapter = {
+  order?: number
   title: string
-  content: string[]
+  content?: string[]
 }
 
 export type Book = {
@@ -104,6 +105,7 @@ type BackendAuthor = {
 }
 
 type BackendChapter = {
+  order?: number
   title?: string
   content?: string[]
 }

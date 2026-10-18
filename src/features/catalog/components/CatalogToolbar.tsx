@@ -8,6 +8,7 @@ import type { CatalogFilters } from "../types"
 type CatalogToolbarProps = {
   filters: CatalogFilters
   total: number
+  loading?: boolean
   gridView: boolean
   onChange: (patch: Partial<CatalogFilters>) => void
   onToggleGrid: (grid: boolean) => void
@@ -17,6 +18,7 @@ type CatalogToolbarProps = {
 export function CatalogToolbar({
   filters,
   total,
+  loading = false,
   gridView,
   onChange,
   onToggleGrid,
@@ -48,8 +50,14 @@ export function CatalogToolbar({
 
       <div className="flex flex-col gap-md border-t border-border-secondary pt-lg sm:flex-row sm:items-center sm:justify-between">
         <p className="text-label-sm text-text-tertiary" aria-live="polite">
-          <span className="font-semibold text-text-primary">{total}</span>{" "}
-          {total > 1 ? "titres disponibles" : "titre disponible"}
+          {loading ? (
+            "Chargement des titres…"
+          ) : (
+            <>
+              <span className="font-semibold text-text-primary">{total}</span>{" "}
+              {total > 1 ? "titres disponibles" : "titre disponible"}
+            </>
+          )}
         </p>
         <div className="flex flex-wrap items-center gap-md">
           <label className="flex items-center gap-sm text-label-sm text-text-tertiary">

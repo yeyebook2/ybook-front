@@ -42,6 +42,7 @@ export type BookDetailPageProps = {
   fallbackBook?: Book
   isAuthenticated: boolean
   owned: boolean
+  ownedBookIds?: Set<string>
   progress?: number
   onBack: () => void
   onOpenBook: (book: CatalogBook) => void

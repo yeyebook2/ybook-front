@@ -7,6 +7,7 @@ import type {
   AdminBook,
   AdminBookInput,
   AdminOrder,
+  AdminReview,
   AdminStats,
   UploadCoverResponse,
   UploadEpubResponse,
@@ -129,7 +130,9 @@ export async function toggleBookPublishApi(
   })
 }
 
-export async function deleteAdminBookApi(id: string): Promise<{ success: boolean }> {
+export async function deleteAdminBookApi(
+  id: string,
+): Promise<{ success: boolean; message?: string }> {
   return request<{ success: boolean; message: string }>(`/books/${id}`, {
     method: "DELETE",
   })
@@ -195,4 +198,40 @@ export async function uploadEpubApi(file: File): Promise<UploadEpubResponse> {
     body: formData,
   })
 }
+
+export async function getAdminReviewsApi(params?: {
+  page?: number
+  limit?: number
+}): Promise<{ items: AdminReview[]; total: number } | null> {
+  try {
+    const searchParams = new URLSearchParams()
+    if (params?.page) searchParams.set("page", String(params.page))
+    if (params?.limit) searchParams.set("limit", String(params.limit))
+
+    const query = searchParams.toString() ? `?${searchParams.toString()}` : ""
+    const res = await request<{
+      success: boolean
+      items: AdminReview[]
+      total?: number
+    }>(`/reviews${query}`, { method: "GET" })
+    const items = res?.items || []
+    const total = typeof res?.total === "number" ? res.total : items.length
+    return { items, total }
+  } catch (err) {
+    console.warn(
+      "[YéYéBook Admin API] get reviews endpoint non disponible:",
+      err,
+    )
+    return null
+  }
+}
+
+export async function deleteAdminReviewApi(
+  id: string,
+): Promise<{ success: boolean; message?: string }> {
+  return request<{ success: boolean; message?: string }>(`/reviews/${id}`, {
+    method: "DELETE",
+  })
+}
+
 

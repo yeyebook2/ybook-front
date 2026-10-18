@@ -4,11 +4,20 @@ type BookMetadataProps = {
   book: BookDetail
 }
 
+const LANGUES: Record<string, string> = {
+  fr: "Français",
+  en: "Anglais",
+}
+
 export function BookMetadata({ book }: BookMetadataProps) {
+  const langue = book.language
+    ? LANGUES[book.language.toLowerCase()] ?? book.language.toUpperCase()
+    : "—"
+
   const rows = [
     { label: "Format", value: book.format ?? "ePub" },
     { label: "Pages", value: String(book.pages) },
-    { label: "Langue", value: book.language ?? "Français" },
+    { label: "Langue", value: langue },
     { label: "ISBN", value: book.isbn ?? "Non renseigné" },
     { label: "Publié", value: String(book.year) },
     { label: "Catégorie", value: book.category },

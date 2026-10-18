@@ -4,6 +4,7 @@ import {
   CheckCircle2,
   LibraryBig,
   RefreshCw,
+  ShoppingBag,
   Sparkles,
 } from "lucide-react"
 
@@ -14,12 +15,15 @@ import { ContinueReadingCard } from "../components/ContinueReadingCard"
 import { DashboardHeader } from "../components/DashboardHeader"
 import { RecommendationCard } from "../components/RecommendationCard"
 import { SummaryCard } from "../components/SummaryCard"
+import { UserOrdersView } from "../components/UserOrdersView"
+import { UserProfileView } from "../components/UserProfileView"
 import type { DashboardBook, DashboardResponse } from "../types"
 
 import type { ToastVariant } from "@/components/ui/Toast"
 
 type DashboardPageProps = {
   user: AuthUser
+  onUserUpdated?: (user: AuthUser) => void
   onHome: () => void
   onCatalog: () => void
   onLibrary: () => void
@@ -31,6 +35,7 @@ type DashboardPageProps = {
 
 export function DashboardPage({
   user,
+  onUserUpdated,
   onHome,
   onCatalog,
   onLibrary,
@@ -39,6 +44,7 @@ export function DashboardPage({
   onAddToCart,
   onToast,
 }: DashboardPageProps) {
+  const [activeTab, setActiveTab] = useState<"overview" | "orders" | "profile">("overview")
   const [data, setData] = useState<DashboardResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -77,6 +83,8 @@ export function DashboardPage({
     <div className="min-h-screen bg-surface-secondary-bg text-text-primary">
       <DashboardHeader
         user={user}
+        activeTab={activeTab}
+        onSelectTab={setActiveTab}
         onHome={onHome}
         onCatalog={onCatalog}
         onLibrary={onLibrary}
@@ -121,13 +129,61 @@ export function DashboardPage({
           </div>
         </section>
 
-        {loading ? (
+        {/* Navigation mobile / onglets d'accès rapide */}
+        <div className="flex items-center gap-sm overflow-x-auto border-b border-border-secondary pb-md lg:hidden">
+          <button
+            type="button"
+            onClick={() => setActiveTab("overview")}
+            className={`whitespace-nowrap rounded-corner-full px-lg py-sm text-label-sm font-semibold transition-colors ${
+              activeTab === "overview"
+                ? "bg-brand-primary text-on-brand"
+                : "bg-surface-bg text-text-secondary border border-border-secondary"
+            }`}
+          >
+            Aperçu
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("orders")}
+            className={`whitespace-nowrap rounded-corner-full px-lg py-sm text-label-sm font-semibold transition-colors ${
+              activeTab === "orders"
+                ? "bg-brand-primary text-on-brand"
+                : "bg-surface-bg text-text-secondary border border-border-secondary"
+            }`}
+          >
+            Mes commandes
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("profile")}
+            className={`whitespace-nowrap rounded-corner-full px-lg py-sm text-label-sm font-semibold transition-colors ${
+              activeTab === "profile"
+                ? "bg-brand-primary text-on-brand"
+                : "bg-surface-bg text-text-secondary border border-border-secondary"
+            }`}
+          >
+            Mon profil
+          </button>
+        </div>
+
+        {/* Affichage selon l'onglet actif */}
+        {activeTab === "orders" ? (
+          <UserOrdersView onCatalog={onCatalog} />
+        ) : activeTab === "profile" ? (
+          <UserProfileView
+            user={user}
+            onUserUpdated={(updated) => {
+              onUserUpdated?.(updated)
+            }}
+            onToast={onToast}
+          />
+        ) : loading ? (
           <section
-            className="grid gap-lg md:grid-cols-3"
+            className="grid gap-lg sm:grid-cols-2 lg:grid-cols-4"
             aria-live="polite"
             aria-busy="true"
           >
-            {["Bibliothèque", "En cours", "Terminés"].map((label) => (
+            {["Bibliothèque", "En cours", "Terminés", "Commandes"].map((label) => (
               <div
                 key={label}
                 className="h-[112px] animate-pulse rounded-corner-lg border border-border-secondary bg-surface-bg"
@@ -163,7 +219,7 @@ export function DashboardPage({
         ) : data ? (
           <>
             <section
-              className="grid gap-lg md:grid-cols-3"
+              className="grid gap-lg sm:grid-cols-2 lg:grid-cols-4"
               aria-label="Résumé de votre activité"
             >
               <SummaryCard
@@ -182,6 +238,12 @@ export function DashboardPage({
                 label="Livres terminés"
                 value={data.summary.completedBooks}
                 icon={CheckCircle2}
+                tone="neutral"
+              />
+              <SummaryCard
+                label="Commandes payées"
+                value={data.summary.ordersCount ?? 0}
+                icon={ShoppingBag}
                 tone="neutral"
               />
             </section>

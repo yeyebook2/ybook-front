@@ -18,6 +18,7 @@ export function BookDetailPage({
   fallbackBook,
   isAuthenticated,
   owned,
+  ownedBookIds,
   progress,
   onBack,
   onOpenBook,
@@ -50,6 +51,7 @@ export function BookDetailPage({
   }
 
   const { book, reviews, relatedBooks } = data
+  const isOwned = owned || (ownedBookIds ? ownedBookIds.has(book.id) : false)
   const bookSchema = {
     "@context": "https://schema.org",
     "@type": "Book",
@@ -183,11 +185,22 @@ export function BookDetailPage({
             </div>
 
             <div className="flex flex-wrap items-center gap-lg text-label-sm text-text-secondary">
-              <RatingStars rating={book.rating} />
-              <span aria-hidden="true" className="text-border-primary">
-                |
-              </span>
-              <span>{reviews.total} avis</span>
+              {reviews.total > 0 ? (
+                <>
+                  <RatingStars rating={book.rating} />
+                  <span aria-hidden="true" className="text-border-primary">
+                    |
+                  </span>
+                  <span>
+                    {book.rating.toFixed(1)} / 5 · {reviews.total}{" "}
+                    {reviews.total > 1 ? "avis" : "avis"}
+                  </span>
+                </>
+              ) : (
+                <span className="italic text-text-tertiary">
+                  Pas encore d'avis
+                </span>
+              )}
               <span aria-hidden="true" className="text-border-primary">
                 |
               </span>
@@ -198,7 +211,7 @@ export function BookDetailPage({
 
             <BookPurchasePanel
               book={book}
-              owned={owned}
+              owned={isOwned}
               progress={progress}
               wished={wished}
               onBuyNow={() => onBuyNow(book)}
@@ -236,9 +249,11 @@ export function BookDetailPage({
             reviews={reviews}
             isAuthenticated={isAuthenticated}
             relatedBooks={relatedBooks}
+            ownedBookIds={ownedBookIds}
             onTabChange={setActiveTab}
             onOpenRelated={handleOpenRelated}
             onAddRelated={handleAddRelated}
+            onReadRelated={(b) => onStartReading({ ...b, chapters: [] })}
             onSeeAllRelated={onBack}
             onSubmitReview={async (values) => {
               await addReview(values)

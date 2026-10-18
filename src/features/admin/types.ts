@@ -54,7 +54,18 @@ export type AdminBook = {
   epub_filename?: string
   has_file?: boolean
   file_size?: number
+  language?: string
   created_at?: string
+}
+
+export type AdminReview = {
+  id: string
+  book_title: string
+  author_name: string
+  user_email: string
+  rating: number
+  comment: string
+  created_at: string
 }
 
 export type AdminBookInput = {

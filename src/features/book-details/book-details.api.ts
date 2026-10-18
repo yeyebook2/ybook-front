@@ -76,25 +76,11 @@ function normalizeDetailBook(payload: BackendBook): BookDetail {
     chapters:
       payload.chapters && payload.chapters.length > 0
         ? payload.chapters.map((chapter, index) => ({
+            order: typeof chapter.order === "number" ? chapter.order : index + 1,
             title: chapter.title ?? `Chapitre ${index + 1}`,
             content: chapter.content ?? [],
           }))
-        : [
-            {
-              title: `Chapitre 1 — Présentation de ${book.title}`,
-              content: (book.description || "")
-                .split("\n\n")
-                .map((p) => p.trim())
-                .filter(Boolean).length > 0
-                ? (book.description || "")
-                    .split("\n\n")
-                    .map((p) => p.trim())
-                    .filter(Boolean)
-                : [
-                    "Bienvenue dans votre lecture numérique sur YéYéBook. Cet ouvrage est disponible dans votre bibliothèque personnelle.",
-                  ],
-            },
-          ],
+        : [],
   }
 }
 

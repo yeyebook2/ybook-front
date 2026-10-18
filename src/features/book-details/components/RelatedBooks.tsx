@@ -5,15 +5,19 @@ import type { CatalogBook } from "@/features/catalog/types"
 
 type RelatedBooksProps = {
   books: CatalogBook[]
+  ownedBookIds?: Set<string>
   onOpen: (book: CatalogBook) => void
   onAdd: (book: CatalogBook) => void
+  onRead?: (book: CatalogBook) => void
   onSeeAll: () => void
 }
 
 export function RelatedBooks({
   books,
+  ownedBookIds,
   onOpen,
   onAdd,
+  onRead,
   onSeeAll,
 }: RelatedBooksProps) {
   if (books.length === 0) {
@@ -46,8 +50,10 @@ export function RelatedBooks({
           <BookCard
             key={book.id}
             book={book}
+            owned={ownedBookIds?.has(book.id)}
             onOpen={() => onOpen(book)}
             onAdd={() => onAdd(book)}
+            onRead={() => onRead?.(book)}
           />
         ))}
       </div>

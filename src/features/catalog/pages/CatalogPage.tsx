@@ -19,6 +19,8 @@ import type { CatalogBook } from "../types"
 type CatalogPageProps = {
   initialCategory?: string
   initialSearch?: string
+  ownedBookIds?: Set<string>
+  onRead?: (book: CatalogBook) => void
   onHome: () => void
   onSearchChange?: (search: string) => void
   onOpenBook: (book: CatalogBook) => void
@@ -29,6 +31,8 @@ type CatalogPageProps = {
 export function CatalogPage({
   initialCategory,
   initialSearch,
+  ownedBookIds,
+  onRead,
   onHome,
   onSearchChange,
   onOpenBook,
@@ -144,6 +148,7 @@ export function CatalogPage({
             <CatalogToolbar
               filters={filters}
               total={data.total}
+              loading={loading}
               gridView={gridView}
               onChange={handleFilterChange}
               onToggleGrid={setGridView}
@@ -165,14 +170,18 @@ export function CatalogPage({
                 {gridView ? (
                   <CatalogGrid
                     books={data.items}
+                    ownedBookIds={ownedBookIds}
                     onOpen={onOpenBook}
                     onAdd={onAddToCart}
+                    onRead={onRead}
                   />
                 ) : (
                   <CatalogList
                     books={data.items}
+                    ownedBookIds={ownedBookIds}
                     onOpen={onOpenBook}
                     onAdd={onAddToCart}
+                    onRead={onRead}
                   />
                 )}
                 <CatalogPagination

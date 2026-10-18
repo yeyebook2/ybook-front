@@ -265,3 +265,72 @@ export async function logout(): Promise<void> {
     await request<{ success?: boolean }>("/auth/logout", { method: "POST" })
   } catch {}
 }
+
+export type UpdateProfilePayload = {
+  first_name?: string
+  last_name?: string
+  phone?: string
+}
+
+export async function updateProfile(
+  data: UpdateProfilePayload,
+): Promise<AuthUser> {
+  const payload = await request<BackendAuthPayload>("/auth/me", {
+    method: "PUT",
+    body: JSON.stringify(data),
+  })
+  const user = normalizeUser(payload.user)
+  if (!user) {
+    throw new Error("Réponse inattendue lors de la mise à jour du profil.")
+  }
+  saveCachedUser(user)
+  return user
+}
+
+export type ChangePasswordPayload = {
+  current_password: string
+  new_password: string
+}
+
+export async function changePassword(
+  data: ChangePasswordPayload,
+): Promise<{ success: boolean; message: string }> {
+  try {
+    const payload = await request<{ success?: boolean; message?: string }>(
+      "/auth/change-password",
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+      },
+    )
+    return {
+      success: payload.success ?? true,
+      message: payload.message ?? "Mot de passe modifié avec succès.",
+    }
+  } catch (err: unknown) {
+    if (err instanceof ApiError || (err && typeof err === "object")) {
+      const anyErr = err as { code?: string; status?: number; message?: string }
+      const code = anyErr.code || ""
+      const status = anyErr.status
+      if (
+        code === "INVALID_CURRENT_PASSWORD" ||
+        (status === 400 && String(anyErr.message).toLowerCase().includes("actuel"))
+      ) {
+        throw new Error("Le mot de passe actuel est incorrect.")
+      }
+      if (
+        code === "SAME_PASSWORD" ||
+        (status === 400 && String(anyErr.message).toLowerCase().includes("différent"))
+      ) {
+        throw new Error("Choisissez un mot de passe différent de l'actuel.")
+      }
+      if (status === 422 || code === "VALIDATION_ERROR") {
+        throw new Error("Le mot de passe doit faire au moins 8 caractères.")
+      }
+      if (status === 429 || code === "TOO_MANY_REQUESTS") {
+        throw new Error("Trop d'essais, réessayez dans quelques minutes.")
+      }
+    }
+    throw err
+  }
+}

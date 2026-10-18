@@ -65,8 +65,10 @@ import {
   AdminBookEditor,
   createAdminBookApi,
   deleteAdminBookApi,
+  deleteAdminReviewApi,
   getAdminBooksApi,
   getAdminOrdersApi,
+  getAdminReviewsApi,
   getAdminStatsApi,
   toggleBookPublishApi,
   updateAdminBookApi,
@@ -74,7 +76,8 @@ import {
   uploadCoverApi,
   uploadEpubApi,
 } from "@/features/admin"
-import type { AdminStats } from "@/features/admin/types"
+import type { AdminBook, AdminReview, AdminStats } from "@/features/admin/types"
+import { LegalModal, type LegalModalType } from "@/components/ui/LegalModal"
 const ybookSymbol = "/brand/ybook-symbol-primary.png"
 const faviconPng = "/brand/ybook-favicon-180.png"
 import { Wordmark } from "@/components/brand/Wordmark"
@@ -94,7 +97,11 @@ import {
   setPendingToast,
 } from "@/lib/pending-toast"
 import { DashboardPage } from "@/features/dashboard/pages/DashboardPage"
-import { getLibraryBookIds, getLibraryItems } from "@/features/dashboard/dashboard.api"
+import {
+  getLibraryBookIds,
+  getLibraryItems,
+  getMyOrders,
+} from "@/features/dashboard/dashboard.api"
 import type { DashboardBook } from "@/features/dashboard/types"
 import { loadCart, MAX_CART_QUANTITY, saveCart } from "@/features/cart"
 import type { CartItem } from "@/features/cart"
@@ -133,6 +140,7 @@ import {
   Library as LibraryIcon,
   BookPlus,
   ClipboardList,
+  MessageSquare,
   Pencil,
   TrendingUp,
   Wallet,
@@ -226,6 +234,8 @@ function loadProgress(userId?: string | null): Progress {
   }
 }
 
+const pluriel = (n: number, mot: string) => `${n} ${mot}${n > 1 ? "s" : ""}`
+
 export default function App({
   initialView = "home",
   initialBookSlug,
@@ -263,6 +273,7 @@ export default function App({
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [checkoutLoading, setCheckoutLoading] = useState(false)
+  const [legalModal, setLegalModal] = useState<LegalModalType | null>(null)
 
   const [libGrid, setLibGrid] = useState<boolean>(true)
 
@@ -318,7 +329,10 @@ export default function App({
     if (isRefreshingLibraryRef.current) return
     isRefreshingLibraryRef.current = true
     try {
-      const items = await getLibraryItems()
+      const [items, userOrders] = await Promise.all([
+        getLibraryItems(),
+        getMyOrders().catch(() => []),
+      ])
       if (items && items.length > 0) {
         const ids = items.map((i) => i.id)
         setLibrary((prev) => Array.from(new Set([...prev, ...ids])))
@@ -340,12 +354,40 @@ export default function App({
           })),
         )
       }
+      if (userOrders && userOrders.length > 0) {
+        setOrders(
+          userOrders.map((uo) => ({
+            id: uo.id.slice(0, 8).toUpperCase(),
+            customer: sessionUser?.name || "Client",
+            email: sessionUser?.email || "",
+            phone: sessionUser?.phone || "",
+            provider: "fedapay",
+            items: (uo.items || []).map((it) => ({
+              bookId: it.slug || it.title,
+              title: it.title,
+              quantity: it.quantity || 1,
+              price: it.unit_price,
+            })),
+            total: uo.total_amount,
+            date: uo.created_at
+              ? new Date(uo.created_at).toLocaleDateString("fr-FR", {
+                  day: "2-digit",
+                  month: "short",
+                  year: "numeric",
+                })
+              : "",
+            status: uo.status as OrderStatus,
+          })),
+        )
+      }
     } catch (err) {
       console.warn("[YéYéBook] Erreur chargement bibliothèque:", err)
     } finally {
       isRefreshingLibraryRef.current = false
     }
-  }, [])
+  }, [sessionUser])
+
+  const ownedBookIds = useMemo(() => new Set(library), [library])
 
   const selectedBook = useMemo(
     () =>
@@ -883,6 +925,7 @@ export default function App({
         Array.from(new Set([...prev, ...cartItems.map((i) => i.bookId)])),
       )
       setCartItems([])
+      void refreshLibrary()
       setView("confirmation")
       showToast("Paiement confirmé — bonne lecture !", "success")
     } catch (err) {
@@ -951,12 +994,16 @@ export default function App({
     const book = books.find((b) => b.id === id)
     setBooks((prev) => prev.filter((b) => b.id !== id))
     setCartItems((prev) => prev.filter((item) => item.bookId !== id))
-    showToast(`« ${book?.title ?? "Titre"} » supprimé du catalogue`, "warning")
 
     try {
-      await deleteAdminBookApi(id)
+      const res = await deleteAdminBookApi(id)
+      showToast(
+        res.message || `« ${book?.title ?? "Titre"} » retiré du catalogue`,
+        "success",
+      )
     } catch (err) {
       console.warn("[Admin API] Synchronisation suppression livre:", err)
+      showToast(`« ${book?.title ?? "Titre"} » retiré du catalogue`, "warning")
     }
   }
 
@@ -1222,6 +1269,9 @@ export default function App({
           <>
             <DashboardPage
               user={sessionUser}
+              onUserUpdated={(updatedUser) => {
+                setSessionUser(updatedUser)
+              }}
               onHome={() => go("home")}
               onCatalog={() => go("catalog")}
               onLibrary={() => go("library")}
@@ -1794,20 +1844,14 @@ export default function App({
                     </button>
                   </div>
                   <div className="flex items-center gap-2xl mt-lg pt-lg border-t border-white/15 w-full">
-                    {[
-                      { k: "120+", v: "titres" },
-                      { k: "4.8/5", v: "satisfaction" },
-                      { k: "6 pays", v: "desservis" },
-                    ].map((s) => (
-                      <div key={s.v} className="flex flex-col">
-                        <span className="text-heading font-semibold text-white">
-                          {s.k}
-                        </span>
-                        <span className="text-video-title text-white/60 uppercase tracking-wide">
-                          {s.v}
-                        </span>
-                      </div>
-                    ))}
+                    <div className="flex flex-col">
+                      <span className="text-heading font-semibold text-white">
+                        {books.length > 0 ? `${books.length}` : "12"}
+                      </span>
+                      <span className="text-video-title text-white/60 uppercase tracking-wide">
+                        titres au catalogue
+                      </span>
+                    </div>
                   </div>
                 </div>
 
@@ -1862,8 +1906,10 @@ export default function App({
                   <BookCard
                     key={book.id}
                     book={book}
+                    owned={ownedBookIds.has(book.id)}
                     onOpen={() => openBook(book.id)}
                     onAdd={() => addToCart(book.id)}
+                    onRead={() => startReading(book.id, book.slug)}
                   />
                 ))}
               </div>
@@ -1915,7 +1961,7 @@ export default function App({
                             {formatPrice(book.price)}
                           </div>
                           <div className="text-video-title text-brand-primary font-medium">
-                            +{book.reviews} ventes
+                            +{pluriel(book.reviews, "vente")}
                           </div>
                         </div>
                       </button>
@@ -1981,7 +2027,7 @@ export default function App({
                         {cat}
                       </div>
                       <div className="text-label-sm text-text-secondary">
-                        {count} titres
+                        {pluriel(count, "titre")}
                       </div>
                     </button>
                   )
@@ -2044,6 +2090,8 @@ export default function App({
               activeCategory === "Tous" ? undefined : activeCategory
             }
             initialSearch={searchQuery}
+            ownedBookIds={ownedBookIds}
+            onRead={(book) => startReading(book.id, book.slug)}
             onHome={() => go("home")}
             onSearchChange={setSearchQuery}
             onOpenBook={(book) => openBook(book)}
@@ -2064,6 +2112,7 @@ export default function App({
             fallbackBook={selectedBook}
             isAuthenticated={Boolean(sessionUser)}
             owned={ownsSelected}
+            ownedBookIds={ownedBookIds}
             progress={selectedBook ? progress[selectedBook.id] : undefined}
             onBack={() => openCatalog(selectedBook?.category)}
             onOpenBook={(book) => openBook(book)}
@@ -2180,13 +2229,11 @@ export default function App({
                 {[
                   { label: "Livres achetés", value: `${libraryBooks.length}` },
                   {
-                    label: "En cours de lecture",
+                    label: "En cours",
                     value: `${
                       libraryBooks.filter((b) => {
                         const s = progress[b.id]
-                        return (
-                          s !== undefined && s > 0 && s < b.chapters.length - 1
-                        )
+                        return s !== undefined && s > 0 && s < 100
                       }).length
                     }`,
                   },
@@ -2195,14 +2242,18 @@ export default function App({
                     value: `${
                       libraryBooks.filter((b) => {
                         const s = progress[b.id]
-                        if (s === undefined) return false
-                        const total = b.chapters?.length || 1
-                        if (total <= 1) return s > 0
-                        return s >= total - 1
+                        return s !== undefined && s >= 100
                       }).length
                     }`,
                   },
-                  { label: "Commandes", value: `${orders.length}` },
+                  {
+                    label: "Commandes",
+                    value: `${
+                      orders.filter((o) =>
+                        ["paid", "completed"].includes(o.status),
+                      ).length
+                    }`,
+                  },
                 ].map((s) => (
                   <div
                     key={s.label}
@@ -2581,22 +2632,22 @@ export default function App({
             </ul>
           </div>
           <div>
-            <h3 className="text-white font-semibold mb-md">Aide</h3>
+            <h3 className="text-white font-semibold mb-md">Aide & Légal</h3>
             <ul className="flex flex-col gap-sm text-label-sm">
               {[
-                "Comment ça marche",
-                "FAQ",
-                "Contact",
-                "Conditions générales",
-                "Confidentialité",
-              ].map((label) => (
-                <li key={label}>
+                { label: "Comment ça marche", type: "how-it-works" as const },
+                { label: "FAQ", type: "faq" as const },
+                { label: "Contact", type: "contact" as const },
+                { label: "Conditions générales", type: "terms" as const },
+                { label: "Confidentialité", type: "privacy" as const },
+              ].map((item) => (
+                <li key={item.label}>
                   <button
                     type="button"
-                    onClick={() => showComingSoon(label)}
+                    onClick={() => setLegalModal(item.type)}
                     className="hover:text-white transition-colors cursor-pointer"
                   >
-                    {label}
+                    {item.label}
                   </button>
                 </li>
               ))}
@@ -2614,33 +2665,12 @@ export default function App({
             </ul>
           </div>
           <div>
-            <h3 className="text-white font-semibold mb-md">Newsletter</h3>
-            <form
-              className="flex gap-sm"
-              onSubmit={(e) => {
-                e.preventDefault()
-                showToast(
-                  "Merci ! Vous êtes inscrit·e à la newsletter.",
-                  "success",
-                )
-              }}
-            >
-              <input
-                type="email"
-                required
-                placeholder="Votre email"
-                aria-label="Votre email"
-                className="flex-1 min-w-0 px-lg py-sm rounded-corner-md bg-white/10 text-white placeholder:text-white/40 text-label-sm border border-white/15 focus:outline-none focus:ring-2 focus:ring-brand-secondary"
-              />
-              <button
-                type="submit"
-                className="px-lg py-sm rounded-corner-md bg-brand-primary text-on-brand font-semibold text-label-sm hover:bg-brand-hover transition-colors cursor-pointer"
-              >
-                OK
-              </button>
-            </form>
-            <p className="text-video-title text-white/40 mt-lg">
-              © 2026 YéYéBook · Littérature africaine francophone
+            <h3 className="text-white font-semibold mb-md">YéYéBook</h3>
+            <p className="text-label-sm text-white/70 leading-relaxed mb-md">
+              La plateforme de lecture numérique dédiée aux littératures africaines francophones.
+            </p>
+            <p className="text-video-title text-white/40">
+              © 2026 YéYéBook · Tous droits réservés
             </p>
           </div>
         </div>
@@ -2862,6 +2892,13 @@ export default function App({
           message={toast.message}
           variant={toast.variant}
           onDismiss={() => setToast(null)}
+        />
+      )}
+
+      {legalModal && (
+        <LegalModal
+          type={legalModal}
+          onClose={() => setLegalModal(null)}
         />
       )}
     </div>
@@ -3281,7 +3318,7 @@ function CheckoutView({
   )
 }
 
-type AdminTab = "dashboard" | "catalog" | "create-book" | "orders"
+type AdminTab = "dashboard" | "catalog" | "create-book" | "orders" | "reviews"
 
 const ORDER_STATUS: Record<OrderStatus, OrderStatusMeta> = {
   paid: { label: "Payée", className: "bg-brand-tertiary text-brand-primary" },
@@ -3294,6 +3331,11 @@ const ORDER_STATUS: Record<OrderStatus, OrderStatusMeta> = {
     label: "Expirée / Annulée",
     className: "bg-surface-secondary-bg text-text-tertiary border border-border-secondary",
   },
+}
+
+const LANGUES_MAP: Record<string, string> = {
+  fr: "Français",
+  en: "Anglais",
 }
 
 function StatusPill({ status }: { status: OrderStatus }) {
@@ -3348,10 +3390,23 @@ function AdminView({
   const [apiOrders, setApiOrders] = useState<Order[]>([])
   const [loadingStats, setLoadingStats] = useState(false)
 
+  // Gestion des livres de l'admin (Point 15)
+  const [catalogStatusFilter, setCatalogStatusFilter] = useState<"all" | "published" | "draft" | "archived">("all")
+  const [adminBooks, setAdminBooks] = useState<AdminBook[]>([])
+  const [adminBooksLoading, setAdminBooksLoading] = useState(false)
+
+  // Gestion des avis pour modération (Point 16)
+  const [reviewsList, setReviewsList] = useState<AdminReview[]>([])
+  const [reviewsLoading, setReviewsLoading] = useState(false)
+  const [reviewsTotal, setReviewsTotal] = useState(0)
+  const [reviewsPage, setReviewsPage] = useState(1)
+
   const mapOrder = (o: any): Order => {
     const orderItems: CartItem[] = (o.items || []).map((it: any) => ({
-      bookId: it.book_id,
-      quantity: it.quantity,
+      bookId: it.book_id || it.slug || it.title,
+      title: it.title,
+      quantity: it.quantity || 1,
+      price: it.price || it.unit_price,
       selected: true,
     }))
     return {
@@ -3416,6 +3471,53 @@ function AdminView({
     }
   }, [])
 
+  const fetchAdminBooks = useCallback(async (status: string, search: string) => {
+    setAdminBooksLoading(true)
+    try {
+      const data = await getAdminBooksApi({
+        status: status === "all" ? undefined : status,
+        search: search.trim() || undefined,
+        limit: 100,
+      })
+      if (data && data.items) {
+        setAdminBooks(data.items)
+      }
+    } catch (err) {
+      console.warn("[YéYéBook Admin] Erreur chargement livres admin:", err)
+    } finally {
+      setAdminBooksLoading(false)
+    }
+  }, [])
+
+  const fetchReviews = useCallback(async (page: number) => {
+    setReviewsLoading(true)
+    try {
+      const data = await getAdminReviewsApi({ page, limit: 50 })
+      if (data) {
+        setReviewsList(data.items || [])
+        setReviewsTotal(data.total)
+      }
+    } catch (err) {
+      console.warn("[YéYéBook Admin] Erreur chargement avis:", err)
+    } finally {
+      setReviewsLoading(false)
+    }
+  }, [])
+
+  const handleDeleteReview = async (id: string) => {
+    if (!window.confirm("Supprimer cet avis ? Cette action est irréversible et recalculera la note du livre.")) {
+      return
+    }
+    try {
+      await deleteAdminReviewApi(id)
+      setReviewsList((prev) => prev.filter((r) => r.id !== id))
+      setReviewsTotal((prev) => Math.max(0, prev - 1))
+      await refreshStatsAndOrders()
+    } catch (err) {
+      console.error("[YéYéBook Admin] Erreur suppression avis:", err)
+    }
+  }
+
   useEffect(() => {
     void refreshStatsAndOrders()
   }, [refreshStatsAndOrders])
@@ -3426,11 +3528,38 @@ function AdminView({
     }
   }, [tab, orderFilter, orderSearch, orderPage, fetchOrders])
 
-  const handleStatusChange = async (id: string, status: OrderStatus) => {
+  useEffect(() => {
+    if (tab === "catalog") {
+      void fetchAdminBooks(catalogStatusFilter, catalogQuery)
+    }
+  }, [tab, catalogStatusFilter, catalogQuery, fetchAdminBooks])
+
+  useEffect(() => {
+    if (tab === "reviews") {
+      void fetchReviews(reviewsPage)
+    }
+  }, [tab, reviewsPage, fetchReviews])
+
+  const handleStatusChange = async (
+    id: string,
+    newStatus: OrderStatus,
+    currentStatus: OrderStatus,
+  ) => {
+    if (newStatus === currentStatus) return
+    let confirmMsg = ""
+    if (newStatus === "refunded" || newStatus === "cancelled") {
+      confirmMsg = "Le client perdra l'accès à ses livres. Confirmer ?"
+    } else if (newStatus === "paid") {
+      confirmMsg = "Les livres seront ajoutés à la bibliothèque du client. Confirmer ?"
+    }
+    if (confirmMsg && !window.confirm(confirmMsg)) {
+      return
+    }
+
     // Mettre à jour immédiatement l'état local
-    setApiOrders((prev) => prev.map((o) => (o.id === id ? { ...o, status } : o)))
+    setApiOrders((prev) => prev.map((o) => (o.id === id ? { ...o, status: newStatus } : o)))
     try {
-      await onSetOrderStatus(id, status)
+      await onSetOrderStatus(id, newStatus)
     } finally {
       // Rappeler /admin/stats et fetchOrders après le changement de statut comme requis par le backend
       await Promise.all([
@@ -3443,13 +3572,19 @@ function AdminView({
   const currentOrders = apiOrders.length > 0 ? apiOrders : orders
 
   const catalogBooks = useMemo(() => {
+    const source: Array<AdminBook | Book> = adminBooks.length > 0 ? adminBooks : books
     const q = catalogQuery.trim().toLowerCase()
-    if (!q) return books
-    return books.filter(
-      (b) =>
-        b.title.toLowerCase().includes(q) || b.author.toLowerCase().includes(q),
-    )
-  }, [books, catalogQuery])
+    return source.filter((b) => {
+      const isPub = (b as any).status === "published" || b.published !== false
+      const isDraft = (b as any).status === "draft" || b.published === false
+      const isArchived = (b as any).status === "archived"
+      if (catalogStatusFilter === "published" && !isPub) return false
+      if (catalogStatusFilter === "draft" && !isDraft) return false
+      if (catalogStatusFilter === "archived" && !isArchived) return false
+      if (!q) return true
+      return b.title.toLowerCase().includes(q) || b.author.toLowerCase().includes(q)
+    })
+  }, [adminBooks, books, catalogStatusFilter, catalogQuery])
 
   const visibleOrders = useMemo(() => {
     if (apiOrders.length > 0) return apiOrders
@@ -3787,6 +3922,11 @@ function AdminView({
       label: "Commandes",
       icon: <ClipboardList className="w-4 h-4" aria-hidden="true" />,
     },
+    {
+      id: "reviews",
+      label: "Avis",
+      icon: <MessageSquare className="w-4 h-4" aria-hidden="true" />,
+    },
   ]
 
   const stats = [
@@ -3810,7 +3950,12 @@ function AdminView({
     },
     {
       label: selectedAuthor === "all" ? "Titres publiés" : "Titres de l'auteur",
-      value: `${displayedBooksCount}`,
+      value:
+        selectedAuthor === "all"
+          ? apiStats
+            ? `${apiStats.books_published_count} / ${apiStats.books_total}`
+            : `${displayedBooksCount}`
+          : `${displayedBooksCount}`,
       icon: <BookText className="w-5 h-5" aria-hidden="true" />,
       hint:
         selectedAuthor === "all"
@@ -3819,7 +3964,7 @@ function AdminView({
     },
     {
       label: "Note moyenne",
-      value: `${avgRating.toFixed(1)}/5`,
+      value: avgRating > 0 ? `${avgRating.toFixed(1)}/5` : "—",
       icon: <TrendingUp className="w-5 h-5" aria-hidden="true" />,
       hint: `sur ${apiStats ? apiStats.books_total : books.length} titres du catalogue`,
     },
@@ -4335,7 +4480,7 @@ function AdminView({
                             {o.customer}
                           </p>
                           <p className="text-video-title text-text-tertiary">
-                            {o.id} · {PROVIDER_LABELS[o.provider] ?? o.provider}
+                            <span className="font-mono font-semibold text-text-primary">{o.id.slice(0, 8).toUpperCase()}</span> · {PROVIDER_LABELS[o.provider] ?? o.provider}
                           </p>
                         </div>
                         <div className="flex items-center gap-lg shrink-0">
@@ -4402,28 +4547,68 @@ function AdminView({
           {}
           {tab === "catalog" && (
             <div className="flex flex-col gap-lg w-full max-w-[1600px] mx-auto">
-              <div className="flex items-center justify-between gap-lg">
-                <div className="w-full max-w-[360px]">
-                  <SearchInput
-                    placeholder="Rechercher un titre, un auteur…"
-                    value={catalogQuery}
-                    onChange={setCatalogQuery}
-                  />
+              <div className="flex flex-wrap items-center justify-between gap-md">
+                <div
+                  className="flex flex-wrap gap-sm"
+                  role="group"
+                  aria-label="Filtrer les titres par statut"
+                >
+                  {([
+                    { id: "all", label: "Tous" },
+                    { id: "published", label: "Publiés" },
+                    { id: "draft", label: "Brouillons" },
+                    { id: "archived", label: "Archivés" },
+                  ] as const).map((f) => {
+                    const active = catalogStatusFilter === f.id
+                    return (
+                      <button
+                        key={f.id}
+                        onClick={() => setCatalogStatusFilter(f.id)}
+                        aria-pressed={active}
+                        className={`inline-flex items-center gap-xs px-lg py-sm rounded-corner-full text-label-sm font-medium border transition-all cursor-pointer ${
+                          active
+                            ? "bg-brand-primary text-on-brand border-brand-primary"
+                            : "bg-surface-bg text-text-secondary border-border-secondary hover:border-brand-primary hover:text-text-primary"
+                        }`}
+                      >
+                        {f.label}
+                      </button>
+                    )
+                  })}
                 </div>
-                <span className="text-label-sm text-text-tertiary whitespace-nowrap hidden sm:inline">
-                  {catalogBooks.length}{" "}
-                  {catalogBooks.length > 1 ? "titres" : "titre"}
-                </span>
+
+                <div className="flex items-center gap-md">
+                  <div className="w-full sm:w-[320px]">
+                    <SearchInput
+                      placeholder="Rechercher un titre, un auteur…"
+                      value={catalogQuery}
+                      onChange={setCatalogQuery}
+                    />
+                  </div>
+                  <span className="text-label-sm text-text-tertiary whitespace-nowrap hidden sm:inline">
+                    {catalogBooks.length}{" "}
+                    {catalogBooks.length > 1 ? "titres" : "titre"}
+                  </span>
+                </div>
               </div>
 
-              {catalogBooks.length === 0 ? (
+              {adminBooksLoading ? (
+                <div className="flex flex-col items-center justify-center gap-md py-4xl text-center rounded-corner-lg border border-border-secondary bg-surface-bg">
+                  <Loader2 className="w-7 h-7 text-brand-primary animate-spin" aria-hidden="true" />
+                  <p className="text-label-sm text-text-secondary">
+                    Chargement du catalogue...
+                  </p>
+                </div>
+              ) : catalogBooks.length === 0 ? (
                 <div className="flex flex-col items-center justify-center gap-md py-4xl text-center rounded-corner-lg border border-dashed border-border-primary bg-surface-bg">
                   <LibraryIcon
                     className="w-8 h-8 text-text-tertiary"
                     aria-hidden="true"
                   />
                   <p className="text-label-sm text-text-secondary">
-                    Aucun titre ne correspond à « {catalogQuery} ».
+                    {catalogQuery.trim()
+                      ? `Aucun titre ne correspond à « ${catalogQuery} ».`
+                      : "Aucun titre dans cette catégorie."}
                   </p>
                 </div>
               ) : (
@@ -4445,9 +4630,18 @@ function AdminView({
                         </th>
                         <th
                           scope="col"
+                          className="font-semibold px-lg py-md hidden lg:table-cell"
+                        >
+                          Langue
+                        </th>
+                        <th
+                          scope="col"
                           className="font-semibold px-lg py-md hidden sm:table-cell"
                         >
                           Prix
+                        </th>
+                        <th scope="col" className="font-semibold px-lg py-md">
+                          Fichier ePub
                         </th>
                         <th scope="col" className="font-semibold px-lg py-md">
                           Statut
@@ -4463,6 +4657,11 @@ function AdminView({
                     <tbody>
                       {catalogBooks.map((book) => {
                         const published = book.published !== false
+                        const isArchived = (book as any).status === "archived"
+                        const hasEpub = Boolean((book as any).has_file || (book as any).epub_filename || (book as any).file_url)
+                        const langCode = (book as any).language || "fr"
+                        const langLabel = LANGUES_MAP[langCode] ?? langCode.toUpperCase()
+
                         return (
                           <tr
                             key={book.id}
@@ -4494,44 +4693,91 @@ function AdminView({
                                 label={book.category}
                               />
                             </td>
+                            <td className="px-lg py-md hidden lg:table-cell text-label-sm text-text-secondary whitespace-nowrap">
+                              {langLabel}
+                            </td>
                             <td className="px-lg py-md hidden sm:table-cell text-label-sm font-medium text-text-primary whitespace-nowrap">
                               {formatPrice(book.price)}
                             </td>
                             <td className="px-lg py-md">
-                              <button
-                                onClick={() => onTogglePublish(book.id)}
-                                aria-pressed={published}
-                                className="inline-flex items-center gap-xs text-video-title font-semibold cursor-pointer group"
-                                aria-label={
-                                  published
-                                    ? `Dépublier « ${book.title} »`
-                                    : `Publier « ${book.title} »`
-                                }
-                              >
-                                {published ? (
-                                  <span className="inline-flex items-center gap-xs text-brand-primary">
-                                    <Eye
-                                      className="w-3.5 h-3.5"
-                                      aria-hidden="true"
-                                    />{" "}
-                                    Publié
-                                  </span>
-                                ) : (
-                                  <span className="inline-flex items-center gap-xs text-text-tertiary group-hover:text-text-secondary">
-                                    <EyeOff
-                                      className="w-3.5 h-3.5"
-                                      aria-hidden="true"
-                                    />{" "}
-                                    Brouillon
-                                  </span>
-                                )}
-                              </button>
+                              {hasEpub ? (
+                                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#1b5e20] bg-[#edf7ee] px-2 py-0.5 rounded-corner-full">
+                                  <Check className="w-3 h-3 text-[#2e8b57]" aria-hidden="true" />
+                                  ePub prêt
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#c13f4e] bg-[#c13f4e]/10 px-2 py-0.5 rounded-corner-full">
+                                  <AlertCircle className="w-3 h-3 text-[#c13f4e]" aria-hidden="true" />
+                                  Manquant
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-lg py-md">
+                              {isArchived ? (
+                                <span className="inline-flex items-center gap-xs text-video-title font-semibold text-text-tertiary bg-surface-secondary-bg px-2 py-0.5 rounded-corner-full border border-border-secondary">
+                                  Archivé
+                                </span>
+                              ) : (
+                                <button
+                                  onClick={() => {
+                                    const willPublish = !published
+                                    if (willPublish && !hasEpub) {
+                                      if (!window.confirm("Attention : ce livre n'a pas encore de fichier ePub lisible. Les clients pourront l'acheter mais ne pourront pas le lire tant qu'un fichier n'est pas envoyé. Voulez-vous quand même le publier ?")) {
+                                        return
+                                      }
+                                    }
+                                    void onTogglePublish(book.id)
+                                    void fetchAdminBooks(catalogStatusFilter, catalogQuery)
+                                  }}
+                                  aria-pressed={published}
+                                  className="inline-flex items-center gap-xs text-video-title font-semibold cursor-pointer group"
+                                  aria-label={
+                                    published
+                                      ? `Dépublier « ${book.title} »`
+                                      : `Publier « ${book.title} »`
+                                  }
+                                >
+                                  {published ? (
+                                    <span className="inline-flex items-center gap-xs text-brand-primary">
+                                      <Eye
+                                        className="w-3.5 h-3.5"
+                                        aria-hidden="true"
+                                      />{" "}
+                                      Publié
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-xs text-text-tertiary group-hover:text-text-secondary">
+                                      <EyeOff
+                                        className="w-3.5 h-3.5"
+                                        aria-hidden="true"
+                                      />{" "}
+                                      Brouillon
+                                    </span>
+                                  )}
+                                </button>
+                              )}
                             </td>
                             <td className="px-xl py-md">
                               <div className="flex items-center justify-end gap-xs">
                                 <button
                                   onClick={() => {
-                                    setEditing(book)
+                                    const fullBook: Book =
+                                      books.find((b) => b.id === book.id) ?? {
+                                        id: book.id,
+                                        title: book.title,
+                                        author: book.author,
+                                        category: book.category,
+                                        price: book.price,
+                                        pages: book.pages ?? 0,
+                                        year: book.year ?? 2026,
+                                        rating: book.rating ?? 0,
+                                        reviews: book.reviews ?? 0,
+                                        cover: book.cover,
+                                        description: book.description ?? "",
+                                        published: book.published !== false,
+                                        chapters: [],
+                                      }
+                                    setEditing(fullBook)
                                     setCreating(false)
                                     setTab("create-book")
                                   }}
@@ -4544,13 +4790,15 @@ function AdminView({
                                   />
                                 </button>
                                 <button
-                                  onClick={() => {
+                                  onClick={async () => {
                                     if (
-                                      confirm(
+                                      window.confirm(
                                         `Supprimer « ${book.title} » du catalogue ?`,
                                       )
-                                    )
-                                      onDeleteBook(book.id)
+                                    ) {
+                                      await onDeleteBook(book.id)
+                                      void fetchAdminBooks(catalogStatusFilter, catalogQuery)
+                                    }
                                   }}
                                   aria-label={`Supprimer « ${book.title} »`}
                                   className="inline-flex items-center justify-center w-8 h-8 rounded-corner-md text-text-secondary hover:bg-[#c13f4e]/10 hover:text-danger transition-colors cursor-pointer"
@@ -4713,7 +4961,7 @@ function AdminView({
                                   {o.customer}
                                 </p>
                                 <p className="text-video-title text-text-tertiary">
-                                  {o.id} {o.date ? `· ${o.date}` : ""}
+                                  <span className="font-mono font-semibold text-text-primary">{o.id.slice(0, 8).toUpperCase()}</span> {o.date ? `· ${o.date}` : ""}
                                 </p>
                                 {o.email && (
                                   <p className="text-video-title text-text-tertiary truncate max-w-[260px]">
@@ -4730,7 +4978,19 @@ function AdminView({
                                 </p>
                               </td>
                               <td className="px-lg py-md hidden sm:table-cell text-label-sm text-text-secondary">
-                                {units} {units > 1 ? "titres" : "titre"}
+                                <div className="flex flex-col gap-0.5">
+                                  <span className="font-medium text-text-primary">
+                                    {units} {units > 1 ? "titres" : "titre"}
+                                  </span>
+                                  {o.items && o.items.length > 0 && (
+                                    <span
+                                      className="text-video-title text-text-tertiary line-clamp-2"
+                                      title={o.items.map((it) => it.title).filter(Boolean).join(", ")}
+                                    >
+                                      {o.items.map((it) => it.title || "Titre").join(", ")}
+                                    </span>
+                                  )}
+                                </div>
                               </td>
                               <td className="px-lg py-md text-label-sm font-semibold text-text-primary whitespace-nowrap">
                                 {formatPrice(o.total)}
@@ -4744,6 +5004,7 @@ function AdminView({
                                       void handleStatusChange(
                                         o.id,
                                         e.target.value as OrderStatus,
+                                        o.status,
                                       )
                                     }
                                     aria-label={`Changer le statut de la commande ${o.id}`}
@@ -4785,6 +5046,117 @@ function AdminView({
                       </div>
                     </div>
                   )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {tab === "reviews" && (
+            <div className="flex flex-col gap-lg w-full max-w-[1600px] mx-auto">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-title font-semibold text-text-primary">
+                    Modération des avis clients
+                  </h2>
+                  <p className="text-label-sm text-text-secondary mt-xs">
+                    Consultez et modérez les avis laissés par les lecteurs sur les ouvrages du catalogue.
+                  </p>
+                </div>
+                <span className="text-label-sm text-text-tertiary">
+                  {reviewsTotal} {reviewsTotal > 1 ? "avis" : "avis"}
+                </span>
+              </div>
+
+              {reviewsLoading ? (
+                <div className="flex flex-col items-center justify-center gap-md py-4xl text-center rounded-corner-lg border border-border-secondary bg-surface-bg">
+                  <Loader2 className="w-7 h-7 text-brand-primary animate-spin" aria-hidden="true" />
+                  <p className="text-label-sm text-text-secondary">
+                    Chargement des avis...
+                  </p>
+                </div>
+              ) : reviewsList.length === 0 ? (
+                <div className="flex flex-col items-center justify-center gap-md py-4xl text-center rounded-corner-lg border border-dashed border-border-primary bg-surface-bg">
+                  <MessageSquare className="w-8 h-8 text-text-tertiary" aria-hidden="true" />
+                  <p className="text-label-sm text-text-secondary">
+                    Aucun avis client pour le moment.
+                  </p>
+                </div>
+              ) : (
+                <div className="rounded-corner-lg bg-surface-bg border border-border-secondary overflow-hidden">
+                  <table className="w-full border-collapse">
+                    <caption className="sr-only">Liste des avis clients</caption>
+                    <thead>
+                      <tr className="text-left text-video-title uppercase tracking-wide text-text-tertiary border-b border-border-secondary">
+                        <th scope="col" className="font-semibold px-xl py-md">
+                          Livre & Auteur
+                        </th>
+                        <th scope="col" className="font-semibold px-lg py-md">
+                          Lecteur
+                        </th>
+                        <th scope="col" className="font-semibold px-lg py-md">
+                          Note
+                        </th>
+                        <th scope="col" className="font-semibold px-xl py-md">
+                          Commentaire
+                        </th>
+                        <th scope="col" className="font-semibold px-lg py-md hidden sm:table-cell">
+                          Date
+                        </th>
+                        <th scope="col" className="font-semibold px-xl py-md text-right">
+                          Action
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {reviewsList.map((rev) => (
+                        <tr
+                          key={rev.id}
+                          className="border-b border-border-secondary last:border-b-0 hover:bg-surface-secondary-bg transition-colors"
+                        >
+                          <td className="px-xl py-md">
+                            <p className="text-label-sm font-semibold text-text-primary">
+                              {rev.book_title}
+                            </p>
+                            <p className="text-video-title text-text-tertiary">
+                              {rev.author_name}
+                            </p>
+                          </td>
+                          <td className="px-lg py-md text-label-sm text-text-secondary">
+                            {rev.user_email || "Lecteur anonyme"}
+                          </td>
+                          <td className="px-lg py-md">
+                            <span className="inline-flex items-center gap-1 text-label-sm font-semibold text-[#e5a00d]">
+                              <Star className="w-3.5 h-3.5 fill-current" aria-hidden="true" />
+                              {rev.rating}/5
+                            </span>
+                          </td>
+                          <td className="px-xl py-md text-label-sm text-text-primary max-w-[360px]">
+                            <p className="line-clamp-3 italic">
+                              « {rev.comment} »
+                            </p>
+                          </td>
+                          <td className="px-lg py-md hidden sm:table-cell text-video-title text-text-tertiary whitespace-nowrap">
+                            {rev.created_at
+                              ? new Date(rev.created_at).toLocaleDateString("fr-FR", {
+                                  day: "2-digit",
+                                  month: "short",
+                                  year: "numeric",
+                                })
+                              : "—"}
+                          </td>
+                          <td className="px-xl py-md text-right">
+                            <button
+                              onClick={() => void handleDeleteReview(rev.id)}
+                              aria-label={`Supprimer l'avis de ${rev.user_email}`}
+                              className="inline-flex items-center justify-center w-8 h-8 rounded-corner-md text-text-secondary hover:bg-[#c13f4e]/10 hover:text-danger transition-colors cursor-pointer"
+                            >
+                              <Trash2 className="w-4 h-4" aria-hidden="true" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               )}
             </div>
