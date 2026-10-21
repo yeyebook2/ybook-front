@@ -45,6 +45,13 @@ export function BookPurchasePanel({
               ? "Reprendre la lecture"
               : "Lire maintenant"}
           </Button>
+        ) : book.has_file === false ? (
+          <div className="flex flex-col gap-xs rounded-corner-md border border-amber-300 bg-amber-50 px-lg py-md text-label-sm text-amber-900">
+            <span className="font-semibold">Bientôt disponible</span>
+            <span>
+              Ce titre est en cours de préparation et sera bientôt disponible à la vente et à la lecture.
+            </span>
+          </div>
         ) : (
           <>
             <Button

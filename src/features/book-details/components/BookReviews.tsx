@@ -10,6 +10,7 @@ type BookReviewsProps = {
     averageRating: number
   }
   isAuthenticated: boolean
+  isOwned?: boolean
   onSubmit: (values: ReviewFormValues) => Promise<void>
   onToast: (
     message: string,
@@ -47,6 +48,7 @@ function Stars({ rating, label }: StarsProps) {
 export function BookReviews({
   reviews,
   isAuthenticated,
+  isOwned,
   onSubmit,
   onToast,
 }: BookReviewsProps) {
@@ -133,7 +135,7 @@ export function BookReviews({
           </p>
         )}
 
-        {isAuthenticated ? (
+        {isAuthenticated && isOwned ? (
           <form
             onSubmit={handleSubmit}
             className="rounded-corner-lg border border-border-secondary bg-surface-secondary-bg p-xl"
@@ -190,6 +192,15 @@ export function BookReviews({
               </button>
             </div>
           </form>
+        ) : isAuthenticated && !isOwned ? (
+          <div className="rounded-corner-lg border border-border-secondary bg-surface-secondary-bg p-lg text-label-sm text-text-secondary">
+            <p className="font-medium text-text-primary">
+              Avis réservé aux acheteurs
+            </p>
+            <p className="mt-xs">
+              Vous devez avoir acheté ce livre pour pouvoir publier un avis vérifié.
+            </p>
+          </div>
         ) : (
           <p className="rounded-corner-lg bg-brand-tertiary p-lg text-label-sm text-text-secondary">
             Connectez-vous pour publier un avis sur ce livre.

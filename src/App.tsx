@@ -98,11 +98,12 @@ import {
 } from "@/lib/pending-toast"
 import { DashboardPage } from "@/features/dashboard/pages/DashboardPage"
 import {
+  getLibrary,
   getLibraryBookIds,
   getLibraryItems,
   getMyOrders,
 } from "@/features/dashboard/dashboard.api"
-import type { DashboardBook } from "@/features/dashboard/types"
+import type { DashboardBook, LibraryStats } from "@/features/dashboard/types"
 import { loadCart, MAX_CART_QUANTITY, saveCart } from "@/features/cart"
 import type { CartItem } from "@/features/cart"
 import { CatalogPage } from "@/features/catalog/pages/CatalogPage"
@@ -261,6 +262,8 @@ export default function App({
   const [sessionUser, setSessionUser] = useState<AuthUser | null>(null)
   const [sessionChecked, setSessionChecked] = useState(false)
   const [books, setBooks] = useState<Book[]>([])
+  const [catalogTotal, setCatalogTotal] = useState<number | null>(null)
+  const [libraryStats, setLibraryStats] = useState<LibraryStats | null>(null)
   const [orders, setOrders] = useState<Order[]>([])
   const [selectedBookId, setSelectedBookId] = useState<string | null>(null)
   const [cartItems, setCartItems] = useState<CartItem[]>([])
@@ -329,10 +332,14 @@ export default function App({
     if (isRefreshingLibraryRef.current) return
     isRefreshingLibraryRef.current = true
     try {
-      const [items, userOrders] = await Promise.all([
-        getLibraryItems(),
+      const [libraryData, userOrders] = await Promise.all([
+        getLibrary(),
         getMyOrders().catch(() => []),
       ])
+      if (libraryData.stats) {
+        setLibraryStats(libraryData.stats)
+      }
+      const items = libraryData.items
       if (items && items.length > 0) {
         const ids = items.map((i) => i.id)
         setLibrary((prev) => Array.from(new Set([...prev, ...ids])))
@@ -346,11 +353,13 @@ export default function App({
             cover: i.cover,
             slug: i.slug,
             rating: 5,
-            reviews: 1,
-            pages: 150,
-            year: 2026,
+            reviews: 0,
+            pages: 0,
             description: "",
             chapters: [],
+            reading_status: i.reading_status,
+            progress_percent: i.progress_percent,
+            has_file: i.has_file,
           })),
         )
       }
@@ -437,6 +446,7 @@ export default function App({
     })
       .then((response) => {
         if (!active) return
+        setCatalogTotal(response.total)
         setBooks(
           response.items.map((book) => {
             const rawBook = book as unknown as { chapters?: Chapter[] }
@@ -1098,7 +1108,8 @@ export default function App({
   const heroCovers = visibleBooks.slice(0, 3)
   const newReleases = visibleBooks.slice(0, 4)
   const bestSellers = [...visibleBooks]
-    .sort((a, b) => b.reviews - a.reviews)
+    .filter((b) => (b.sales_count ?? 0) > 0)
+    .sort((a, b) => (b.sales_count ?? 0) - (a.sales_count ?? 0))
     .slice(0, 10)
   const libraryBooks = useMemo(() => {
     const map = new Map<string, Book>()
@@ -1141,6 +1152,110 @@ export default function App({
       `La page « ${label} » sera disponible dans une prochaine version.`,
       "default",
     )
+
+  const handleDownloadInvoice = (order: Order) => {
+    const shortId = order.id.toUpperCase()
+    const customerName = order.customer || sessionUser?.name || "Client YéYéBook"
+    const customerEmail = order.email || sessionUser?.email || "Non renseigné"
+    const dateFormatted = order.date || new Date().toLocaleDateString("fr-FR")
+    const totalFormatted = formatPrice(order.total)
+
+    const itemsRows = order.items
+      .map((it) => {
+        const itemPrice = it.price ?? 0
+        const qty = it.quantity || 1
+        return `
+        <tr>
+          <td style="padding: 10px 12px; border-bottom: 1px solid #f0f0f0;"><strong>${it.title}</strong></td>
+          <td style="padding: 10px 12px; border-bottom: 1px solid #f0f0f0; text-align: center;">${qty}</td>
+          <td style="padding: 10px 12px; border-bottom: 1px solid #f0f0f0; text-align: right;">${formatPrice(itemPrice)}</td>
+          <td style="padding: 10px 12px; border-bottom: 1px solid #f0f0f0; text-align: right; font-weight: 600;">${formatPrice(itemPrice * qty)}</td>
+        </tr>`
+      })
+      .join("")
+
+    const html = `<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>Facture ${shortId} - YéYéBook</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #100908; margin: 0; padding: 32px; background: #fafafa; }
+    .card { max-width: 680px; margin: 0 auto; background: #fff; border: 1px solid #e8e8e8; border-radius: 12px; padding: 36px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); }
+    .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #E04070; padding-bottom: 20px; margin-bottom: 24px; }
+    .title { font-size: 24px; font-weight: 800; color: #B84870; margin: 0; }
+    .badge { display: inline-block; padding: 4px 10px; border-radius: 16px; background: #d1fae5; color: #065f46; font-size: 11px; font-weight: 700; text-transform: uppercase; margin-top: 6px; }
+    .meta { display: flex; justify-content: space-between; background: #FFF6EB; padding: 14px 18px; border-radius: 8px; margin-bottom: 24px; font-size: 13px; line-height: 1.5; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 24px; font-size: 13px; }
+    th { text-align: left; padding: 10px 12px; background: #fdfaf6; border-bottom: 2px solid #eee; font-weight: 600; }
+    .total-line { text-align: right; border-top: 2px solid #100908; padding-top: 14px; margin-bottom: 24px; }
+    .total-val { font-size: 22px; font-weight: 800; color: #E04070; margin-top: 4px; }
+    .footer { font-size: 11px; color: #888; border-top: 1px solid #eee; padding-top: 16px; display: flex; justify-content: space-between; }
+    @media print { body { padding: 0; background: #fff; } .card { border: none; box-shadow: none; padding: 10px; } }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <div>
+        <div class="title">YéYéBook</div>
+        <div style="font-size: 12px; color: #666; margin-top: 4px;">La plateforme des e-books africains francophones</div>
+        <div style="font-size: 12px; color: #999;">https://yeyebook.com</div>
+      </div>
+      <div style="text-align: right;">
+        <div style="font-size: 16px; font-weight: 700;">Facture ${shortId}</div>
+        <div style="font-size: 12px; color: #666; margin-top: 2px;">Date : ${dateFormatted}</div>
+        <span class="badge">Payée</span>
+      </div>
+    </div>
+    <div class="meta">
+      <div>
+        <strong>Client :</strong><br>
+        ${customerName}<br>
+        ${customerEmail}
+      </div>
+      <div style="text-align: right;">
+        <strong>Règlement :</strong><br>
+        Mobile Money via FedaPay<br>
+        Statut : Paiement validé
+      </div>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Titre</th>
+          <th style="text-align: center;">Qté</th>
+          <th style="text-align: right;">Prix unit.</th>
+          <th style="text-align: right;">Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${itemsRows}
+      </tbody>
+    </table>
+    <div class="total-line">
+      <div style="font-size: 13px; color: #555;">Montant total payé (TTC en FCFA) :</div>
+      <div class="total-val">${totalFormatted}</div>
+    </div>
+    <div class="footer">
+      <div>Mention : <strong>Facture acquittée</strong> — vos e-books sont accessibles dans votre bibliothèque.</div>
+      <div>Merci pour votre achat.</div>
+    </div>
+  </div>
+  <script>
+    window.addEventListener('DOMContentLoaded', () => { setTimeout(() => { window.print(); }, 300); });
+  </script>
+</body>
+</html>`
+
+    const win = window.open("", "_blank")
+    if (win) {
+      win.document.write(html)
+      win.document.close()
+    } else {
+      showToast(`Facture ${shortId} prête.`, "success")
+    }
+  }
   const handleAuthenticated = (response: AuthApiResponse) => {
     console.log("[YéYéBook Auth] Authentification réussie (handleAuthenticated):", response)
     if (!response.user) {
@@ -1846,7 +1961,11 @@ export default function App({
                   <div className="flex items-center gap-2xl mt-lg pt-lg border-t border-white/15 w-full">
                     <div className="flex flex-col">
                       <span className="text-heading font-semibold text-white">
-                        {books.length > 0 ? `${books.length}` : "12"}
+                        {catalogTotal !== null
+                          ? `${catalogTotal}`
+                          : books.length > 0
+                            ? `${books.length}`
+                            : "—"}
                       </span>
                       <span className="text-video-title text-white/60 uppercase tracking-wide">
                         titres au catalogue
@@ -1916,60 +2035,62 @@ export default function App({
             </section>
 
             {}
-            <section
-              className="flex flex-col gap-xl"
-              aria-labelledby="best-title"
-            >
-              <h2
-                id="best-title"
-                className="font-serif text-title font-semibold text-text-primary"
+            {bestSellers.length > 0 && (
+              <section
+                className="flex flex-col gap-xl"
+                aria-labelledby="best-title"
               >
-                Best-sellers du mois
-              </h2>
-              <div className="rounded-corner-lg bg-surface-bg border border-border-secondary p-lg md:p-xl">
-                <ol className="flex flex-col">
-                  {bestSellers.map((book, i) => (
-                    <li key={book.id}>
-                      <button
-                        onClick={() => openBook(book.id)}
-                        className="w-full flex items-center gap-lg p-md rounded-corner-md hover:bg-surface-hover transition-colors cursor-pointer text-left"
-                      >
-                        <span
-                          className="text-title font-bold text-accent w-8 shrink-0"
-                          aria-hidden="true"
+                <h2
+                  id="best-title"
+                  className="font-serif text-title font-semibold text-text-primary"
+                >
+                  Best-sellers du mois
+                </h2>
+                <div className="rounded-corner-lg bg-surface-bg border border-border-secondary p-lg md:p-xl">
+                  <ol className="flex flex-col">
+                    {bestSellers.map((book, i) => (
+                      <li key={book.id}>
+                        <button
+                          onClick={() => openBook(book.id)}
+                          className="w-full flex items-center gap-lg p-md rounded-corner-md hover:bg-surface-hover transition-colors cursor-pointer text-left"
                         >
-                          {i + 1}
-                        </span>
-                        <div className="w-12 h-16 rounded-corner-sm overflow-hidden bg-brand-tertiary shrink-0">
-                          <img
-                            src={book.cover}
-                            alt=""
-                            onError={handleCoverError}
-                            className="w-full h-full object-cover"
-                          />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-label font-semibold text-text-primary truncate">
-                            {book.title}
-                          </p>
-                          <p className="text-label-sm text-text-secondary truncate">
-                            {book.author} • {book.category}
-                          </p>
-                        </div>
-                        <div className="text-right shrink-0">
-                          <div className="text-label font-semibold text-text-primary">
-                            {formatPrice(book.price)}
+                          <span
+                            className="text-title font-bold text-accent w-8 shrink-0"
+                            aria-hidden="true"
+                          >
+                            {i + 1}
+                          </span>
+                          <div className="w-12 h-16 rounded-corner-sm overflow-hidden bg-brand-tertiary shrink-0">
+                            <img
+                              src={book.cover}
+                              alt=""
+                              onError={handleCoverError}
+                              className="w-full h-full object-cover"
+                            />
                           </div>
-                          <div className="text-video-title text-brand-primary font-medium">
-                            +{pluriel(book.reviews, "vente")}
+                          <div className="flex-1 min-w-0">
+                            <p className="text-label font-semibold text-text-primary truncate">
+                              {book.title}
+                            </p>
+                            <p className="text-label-sm text-text-secondary truncate">
+                              {book.author} • {book.category}
+                            </p>
                           </div>
-                        </div>
-                      </button>
-                    </li>
-                  ))}
-                </ol>
-              </div>
-            </section>
+                          <div className="text-right shrink-0">
+                            <div className="text-label font-semibold text-text-primary">
+                              {formatPrice(book.price)}
+                            </div>
+                            <div className="text-video-title text-brand-primary font-medium">
+                              +{pluriel(book.sales_count ?? 0, "vente")}
+                            </div>
+                          </div>
+                        </button>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              </section>
+            )}
 
             {}
             <section
@@ -2227,28 +2348,42 @@ export default function App({
             {libraryBooks.length > 0 && (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-lg">
                 {[
-                  { label: "Livres achetés", value: `${libraryBooks.length}` },
+                  {
+                    label: "Livres achetés",
+                    value: `${libraryStats?.books ?? libraryBooks.length}`,
+                  },
                   {
                     label: "En cours",
                     value: `${
+                      libraryStats?.reading ??
                       libraryBooks.filter((b) => {
-                        const s = progress[b.id]
-                        return s !== undefined && s > 0 && s < 100
+                        const status = (b as any).reading_status
+                        const s = (b as any).progress_percent ?? progress[b.id]
+                        return (
+                          status === "reading" ||
+                          (s !== undefined && s > 0 && s < 100)
+                        )
                       }).length
                     }`,
                   },
                   {
                     label: "Terminés",
                     value: `${
+                      libraryStats?.finished ??
                       libraryBooks.filter((b) => {
-                        const s = progress[b.id]
-                        return s !== undefined && s >= 100
+                        const status = (b as any).reading_status
+                        const s = (b as any).progress_percent ?? progress[b.id]
+                        return (
+                          status === "finished" ||
+                          (s !== undefined && s >= 100)
+                        )
                       }).length
                     }`,
                   },
                   {
                     label: "Commandes",
                     value: `${
+                      libraryStats?.orders ??
                       orders.filter((o) =>
                         ["paid", "completed"].includes(o.status),
                       ).length
@@ -2290,19 +2425,23 @@ export default function App({
               /* Vue Grille (Cartes verticales) */
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2xl">
                 {libraryBooks.map((book) => {
-                  const saved = progress[book.id]
-                  const totalChapters = Math.max(1, book.chapters?.length || 1)
-                  const started = saved !== undefined && saved > 0
+                  const readingStatus = (book as any).reading_status
+                  const progressPct =
+                    (book as any).progress_percent !== undefined
+                      ? Number((book as any).progress_percent)
+                      : progress[book.id] !== undefined
+                        ? Number(progress[book.id])
+                        : undefined
                   const completed =
-                    totalChapters <= 1
-                      ? started
-                      : saved !== undefined && saved >= totalChapters - 1
-                  const pct = started
-                    ? Math.min(
-                        100,
-                        Math.round(((saved + 1) / totalChapters) * 100),
-                      )
-                    : 0
+                    readingStatus === "finished" ||
+                    (progressPct !== undefined && progressPct >= 100)
+                  const started =
+                    readingStatus === "reading" ||
+                    (!completed && progressPct !== undefined && progressPct > 0)
+                  const pct =
+                    progressPct !== undefined
+                      ? Math.min(100, Math.max(0, Math.round(progressPct)))
+                      : 0
                   return (
                     <div key={book.id} className="flex flex-col gap-lg">
                       <button
@@ -2356,7 +2495,7 @@ export default function App({
                         </div>
                       )}
                       <Button
-                        variant={completed ? "neutral" : started ? "neutral" : "primary"}
+                        variant={completed ? "neutral" : "primary"}
                         iconStart={
                           completed ? (
                             <RotateCcw className="w-4 h-4" />
@@ -2382,19 +2521,23 @@ export default function App({
               /* Vue Liste (Lignes horizontales complètes) */
               <div className="flex flex-col gap-md">
                 {libraryBooks.map((book) => {
-                  const saved = progress[book.id]
-                  const totalChapters = Math.max(1, book.chapters?.length || 1)
-                  const started = saved !== undefined && saved > 0
+                  const readingStatus = (book as any).reading_status
+                  const progressPct =
+                    (book as any).progress_percent !== undefined
+                      ? Number((book as any).progress_percent)
+                      : progress[book.id] !== undefined
+                        ? Number(progress[book.id])
+                        : undefined
                   const completed =
-                    totalChapters <= 1
-                      ? started
-                      : saved !== undefined && saved >= totalChapters - 1
-                  const pct = started
-                    ? Math.min(
-                        100,
-                        Math.round(((saved + 1) / totalChapters) * 100),
-                      )
-                    : 0
+                    readingStatus === "finished" ||
+                    (progressPct !== undefined && progressPct >= 100)
+                  const started =
+                    readingStatus === "reading" ||
+                    (!completed && progressPct !== undefined && progressPct > 0)
+                  const pct =
+                    progressPct !== undefined
+                      ? Math.min(100, Math.max(0, Math.round(progressPct)))
+                      : 0
                   return (
                     <div
                       key={book.id}
@@ -2488,7 +2631,7 @@ export default function App({
 
                       <div className="flex items-center gap-sm shrink-0 self-stretch sm:self-center justify-end border-t sm:border-t-0 pt-sm sm:pt-0 border-border-secondary/60">
                         <Button
-                          variant={completed ? "neutral" : started ? "neutral" : "primary"}
+                          variant={completed ? "neutral" : "primary"}
                           iconStart={
                             completed ? (
                               <RotateCcw className="w-4 h-4" />
@@ -2540,38 +2683,62 @@ export default function App({
                         <th className="px-lg py-md font-medium">Date</th>
                         <th className="px-lg py-md font-medium">Articles</th>
                         <th className="px-lg py-md font-medium">Montant</th>
+                        <th className="px-lg py-md font-medium">Statut</th>
                         <th className="px-lg py-md font-medium text-right">
                           Facture
                         </th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border-secondary">
-                      {orders.slice(0, 5).map((o) => (
-                        <tr key={o.id} className="hover:bg-surface-hover">
-                          <td className="px-lg py-md font-mono text-text-secondary">
-                            {o.id}
-                          </td>
-                          <td className="px-lg py-md text-text-secondary">
-                            {o.date}
-                          </td>
-                          <td className="px-lg py-md text-text-secondary">
-                            {o.items.reduce((n, it) => n + it.quantity, 0)}
-                          </td>
-                          <td className="px-lg py-md font-medium text-text-primary">
-                            {formatPrice(o.total)}
-                          </td>
-                          <td className="px-lg py-md text-right">
-                            <button
-                              onClick={() =>
-                                showToast(`Facture ${o.id} générée`, "success")
-                              }
-                              className="text-brand-primary hover:underline cursor-pointer"
-                            >
-                              Facture PDF
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
+                      {orders.slice(0, 5).map((o) => {
+                        const isPaid = ["paid", "completed"].includes(o.status)
+                        return (
+                          <tr key={o.id} className="hover:bg-surface-hover">
+                            <td className="px-lg py-md font-mono text-text-secondary">
+                              {o.id}
+                            </td>
+                            <td className="px-lg py-md text-text-secondary">
+                              {o.date}
+                            </td>
+                            <td className="px-lg py-md text-text-secondary">
+                              {o.items.reduce((n, it) => n + it.quantity, 0)}
+                            </td>
+                            <td className="px-lg py-md font-medium text-text-primary">
+                              {formatPrice(o.total)}
+                            </td>
+                            <td className="px-lg py-md whitespace-nowrap">
+                              {isPaid ? (
+                                <span className="inline-flex items-center rounded-corner-full bg-emerald-100 px-md py-0.5 text-[11px] font-semibold text-emerald-900 border border-emerald-300">
+                                  Payée
+                                </span>
+                              ) : o.status === "pending" ? (
+                                <span className="inline-flex items-center rounded-corner-full bg-amber-100 px-md py-0.5 text-[11px] font-semibold text-amber-900 border border-amber-300">
+                                  En attente
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center rounded-corner-full bg-stone-100 px-md py-0.5 text-[11px] font-semibold text-stone-700 border border-stone-300">
+                                  Annulée / Échouée
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-lg py-md text-right whitespace-nowrap">
+                              {isPaid ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDownloadInvoice(o)}
+                                  className="text-brand-primary hover:underline cursor-pointer font-medium"
+                                >
+                                  Facture PDF
+                                </button>
+                              ) : (
+                                <span className="text-text-tertiary text-video-title italic">
+                                  Indisponible
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        )
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -4259,7 +4426,7 @@ function AdminView({
                               </span>
                               {m.orders_count !== undefined && m.orders_count > 0 && (
                                 <span className="text-[10px] text-text-tertiary">
-                                  {m.orders_count} vte{m.orders_count > 1 ? "s" : ""}
+                                  {m.orders_count} vente{m.orders_count > 1 ? "s" : ""}
                                 </span>
                               )}
                             </div>

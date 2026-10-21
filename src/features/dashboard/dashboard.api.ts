@@ -3,7 +3,14 @@ import { createApiHeaders } from "@/lib/api-headers"
 import { getPublicApiBaseUrl } from "@/lib/runtime-env"
 import type { AuthUser } from "@/features/auth/types"
 
-import type { DashboardBook, DashboardResponse, UserOrder } from "./types"
+import type {
+  DashboardBook,
+  DashboardResponse,
+  LibraryBookItem,
+  LibraryResponse,
+  LibraryStats,
+  UserOrder,
+} from "./types"
 
 const API_BASE_URL = getPublicApiBaseUrl()
 const API_PREFIX = "/api/v1"
@@ -79,6 +86,18 @@ function mapBook(book: BackendBook | BackendLibraryItem): DashboardBook {
         ? book.progress
         : undefined
 
+  const hasFile =
+    nestedBook && typeof (nestedBook as any).has_file === "boolean"
+      ? (nestedBook as any).has_file
+      : "has_file" in (book as any) && typeof (book as any).has_file === "boolean"
+        ? (book as any).has_file
+        : true
+
+  const readingStatus =
+    "reading_status" in (book as any) && typeof (book as any).reading_status === "string"
+      ? (book as any).reading_status
+      : undefined
+
   return {
     id: String(id),
     title:
@@ -100,16 +119,17 @@ function mapBook(book: BackendBook | BackendLibraryItem): DashboardBook {
       "/src/imports/ybook-symbol-primary-1024px.png",
     progress:
       progress === undefined ? undefined : Math.max(0, Math.min(100, progress)),
+    has_file: hasFile,
+    reading_status: readingStatus,
+    progress_percent: progress === undefined ? undefined : Math.max(0, Math.min(100, progress)),
   }
 }
 
 async function loadProductionDashboard(
   user: AuthUser,
 ): Promise<DashboardResponse> {
-  const [libraryResponse, booksResponse, ordersResponse] = await Promise.all([
-    request<CollectionResponse<BackendLibraryItem>>(
-      "/library?page=1&limit=50&sort_by=recent",
-    ),
+  const [libraryData, booksResponse, ordersResponse] = await Promise.all([
+    getLibrary(),
     request<CollectionResponse<BackendBook>>(
       "/books?page=1&limit=12&sort_order=desc&sort_by=created_at",
     ),
@@ -118,36 +138,12 @@ async function loadProductionDashboard(
     ),
   ])
 
-  const libraryBooks = libraryResponse.items.map(mapBook)
+  const libraryBooks = libraryData.items
   const ownedIds = new Set(
-    libraryResponse.items
-      .map((item) => {
-        const id = item.book?.id ?? item.book_id
-        return id !== undefined && id !== null ? String(id) : null
-      })
-      .filter((id): id is string => Boolean(id)),
+    libraryBooks.map((item) => String(item.id)),
   )
 
-  const progressResults = await Promise.all(
-    libraryBooks.map(async (book) => {
-      try {
-        const progressResponse = await request<{
-          progress?: number
-          progress_percent?: number
-        }>(`/library/${book.id}/progress`)
-        return {
-          ...book,
-          progress:
-            progressResponse.progress_percent ??
-            progressResponse.progress ??
-            book.progress,
-        }
-      } catch {
-        return book
-      }
-    }),
-  )
-  const continueReading = progressResults
+  const continueReading = libraryBooks
     .filter((book) => (book.progress ?? 0) > 0 && (book.progress ?? 0) < 100)
     .slice(0, 4)
 
@@ -156,19 +152,20 @@ async function loadProductionDashboard(
     .filter((book) => !ownedIds.has(String(book.id)))
     .slice(0, 6)
 
-  const achetes = libraryResponse.total ?? libraryBooks.length
-  const enCours = libraryResponse.items.filter(
-    (i) =>
-      (i.progress_percent ?? i.progress ?? 0) > 0 &&
-      (i.progress_percent ?? i.progress ?? 0) < 100,
-  ).length
-  const termines = libraryResponse.items.filter(
-    (i) => (i.progress_percent ?? i.progress ?? 0) >= 100,
-  ).length
   const userOrders = ordersResponse.items ?? ordersResponse.orders ?? []
   const commandes = userOrders.filter((o: UserOrder) =>
     ["paid", "completed"].includes(o.status),
   ).length
+
+  const achetes = libraryData.stats?.books ?? libraryData.total ?? libraryBooks.length
+  const enCours =
+    libraryData.stats?.reading ??
+    libraryBooks.filter(
+      (i) => (i.progress ?? 0) > 0 && (i.progress ?? 0) < 100,
+    ).length
+  const termines =
+    libraryData.stats?.finished ??
+    libraryBooks.filter((i) => (i.progress ?? 0) >= 100).length
 
   return {
     user,
@@ -176,7 +173,7 @@ async function loadProductionDashboard(
       booksInLibrary: achetes,
       readingNow: enCours,
       completedBooks: termines,
-      ordersCount: commandes,
+      ordersCount: libraryData.stats?.orders ?? commandes,
     },
     continueReading,
     recommendations,
@@ -213,7 +210,7 @@ export async function getLibraryBookIds(): Promise<string[]> {
   }
 }
 
-export async function getLibraryItems(): Promise<DashboardBook[]> {
+export async function getLibrary(): Promise<LibraryResponse> {
   try {
     const response = await request<any>(
       "/library?page=1&limit=100&sort_by=recent",
@@ -221,10 +218,71 @@ export async function getLibraryItems(): Promise<DashboardBook[]> {
     const list: BackendLibraryItem[] = Array.isArray(response)
       ? response
       : response?.items || response?.books || response?.data || []
-    return list.map(mapBook)
+
+    const items: LibraryBookItem[] = list.map((item) => {
+      const base = mapBook(item)
+      const raw = item as any
+      const reading_status =
+        raw.reading_status ??
+        (base.progress !== undefined && base.progress >= 100
+          ? "finished"
+          : base.progress !== undefined && base.progress > 0
+            ? "reading"
+            : "not_started")
+      const progress_percent =
+        raw.progress_percent ??
+        raw.progress ??
+        base.progress ??
+        0
+      const has_file =
+        typeof raw.has_file === "boolean"
+          ? raw.has_file
+          : typeof base.has_file === "boolean"
+            ? base.has_file
+            : true
+
+      return {
+        ...base,
+        has_file,
+        reading_status,
+        progress_percent,
+      }
+    })
+
+    const rawStats = response?.stats
+    const stats: LibraryStats | undefined = rawStats
+      ? {
+          books: Number(rawStats.books ?? items.length),
+          reading: Number(
+            rawStats.reading ??
+              items.filter((i) => i.reading_status === "reading").length,
+          ),
+          finished: Number(
+            rawStats.finished ??
+              items.filter((i) => i.reading_status === "finished").length,
+          ),
+          not_started: Number(
+            rawStats.not_started ??
+              items.filter((i) => i.reading_status === "not_started").length,
+          ),
+          orders:
+            rawStats.orders !== undefined ? Number(rawStats.orders) : undefined,
+        }
+      : undefined
+
+    return {
+      items,
+      stats,
+      total: response?.total ?? items.length,
+    }
   } catch {
-    return []
+    return { items: [], total: 0 }
   }
+}
+
+export async function getLibraryItems(): Promise<DashboardBook[]> {
+  const lib = await getLibrary()
+  return lib.items
 }
 
 export async function getBookReadingProgress(

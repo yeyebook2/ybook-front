@@ -37,7 +37,19 @@ function resolveCategory(book: BackendBook): string {
   return firstCategory?.name ?? "Littérature"
 }
 
+function resolveYear(book: BackendBook): number | undefined {
+  const raw = book.year ?? book.publication_year
+  if (raw === undefined || raw === null) return undefined
+  const parsed = Number(raw)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined
+}
+
 export function mapBackendBook(book: BackendBook): CatalogBook {
+  const hasFile =
+    typeof book.has_file === "boolean"
+      ? book.has_file
+      : Boolean(book.file_url || book.epub_filename)
+
   return {
     id: String(book.id ?? ""),
     slug: book.slug,
@@ -52,10 +64,7 @@ export function mapBackendBook(book: BackendBook): CatalogBook {
     pages: asNumber(book.pages ?? book.page_count, 0),
     isbn: book.isbn,
     format: book.format,
-    year: asNumber(
-      book.year ?? book.publication_year,
-      new Date().getFullYear(),
-    ),
+    year: resolveYear(book),
     cover:
       book.cover_url ??
       book.cover ??
@@ -66,6 +75,16 @@ export function mapBackendBook(book: BackendBook): CatalogBook {
     language: book.language,
     publishedAt: book.published_at,
     published: book.published,
+    has_file: hasFile,
+    file_url: book.file_url,
+    epub_filename: book.epub_filename,
+    sales_count: asNumber(book.sales_count, 0),
+    added_at: book.added_at ?? book.created_at ?? book.published_at,
+    created_at: book.created_at,
+    is_owned: book.is_owned,
+    isOwned: book.is_owned,
+    reading_status: book.reading_status,
+    progress_percent: book.progress_percent,
   }
 }
 

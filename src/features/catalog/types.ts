@@ -15,7 +15,7 @@ export type Book = {
   rating: number
   reviews: number
   pages: number
-  year: number
+  year?: number
   isbn?: string
   format?: string
   cover: string
@@ -30,6 +30,13 @@ export type Book = {
   epub_filename?: string
   has_file?: boolean
   file_size?: number
+  sales_count?: number
+  added_at?: string
+  created_at?: string
+  is_owned?: boolean
+  isOwned?: boolean
+  reading_status?: "not_started" | "reading" | "finished"
+  progress_percent?: number
 }
 
 export type CatalogBook = {
@@ -44,7 +51,7 @@ export type CatalogBook = {
   rating: number
   reviews: number
   pages: number
-  year: number
+  year?: number
   isbn?: string
   format?: string
   cover: string
@@ -57,6 +64,13 @@ export type CatalogBook = {
   epub_filename?: string
   has_file?: boolean
   file_size?: number
+  sales_count?: number
+  added_at?: string
+  created_at?: string
+  is_owned?: boolean
+  isOwned?: boolean
+  reading_status?: "not_started" | "reading" | "finished"
+  progress_percent?: number
 }
 
 export type CatalogSortBy = "relevance" | "price" | "published_at" | "popularity" | "rating"
@@ -129,6 +143,7 @@ export type BackendBook = {
   average_rating?: number
   reviews?: number
   reviews_count?: number
+  sales_count?: number
   pages?: number
   page_count?: number
   isbn?: string
@@ -141,6 +156,15 @@ export type BackendBook = {
   chapters?: BackendChapter[]
   published?: boolean
   published_at?: string
+  has_file?: boolean
+  file_url?: string
+  epub_filename?: string
+  file_size?: number
+  is_owned?: boolean
+  reading_status?: "not_started" | "reading" | "finished"
+  progress_percent?: number
+  added_at?: string
+  created_at?: string
 }
 
 type BackendFacet = {

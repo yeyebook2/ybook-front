@@ -16,10 +16,14 @@ export function BookMetadata({ book }: BookMetadataProps) {
 
   const rows = [
     { label: "Format", value: book.format ?? "ePub" },
-    { label: "Pages", value: String(book.pages) },
+    ...(book.pages && book.pages > 0
+      ? [{ label: "Pages", value: String(book.pages) }]
+      : []),
     { label: "Langue", value: langue },
-    { label: "ISBN", value: book.isbn ?? "Non renseigné" },
-    { label: "Publié", value: String(book.year) },
+    ...(book.isbn ? [{ label: "ISBN", value: book.isbn }] : []),
+    ...(book.year && book.year > 0
+      ? [{ label: "Publié", value: String(book.year) }]
+      : []),
     { label: "Catégorie", value: book.category },
   ]
 

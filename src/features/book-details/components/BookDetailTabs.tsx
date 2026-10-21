@@ -13,6 +13,7 @@ type BookDetailTabsProps = {
   activeTab: BookDetailTab
   reviews: BookReviewPage
   isAuthenticated: boolean
+  isOwned?: boolean
   relatedBooks: CatalogBook[]
   ownedBookIds?: Set<string>
   onTabChange: (tab: BookDetailTab) => void
@@ -43,6 +44,7 @@ export function BookDetailTabs({
   activeTab,
   reviews,
   isAuthenticated,
+  isOwned,
   relatedBooks,
   ownedBookIds,
   onTabChange,
@@ -108,23 +110,23 @@ export function BookDetailTabs({
                 </section>
               )}
             </div>
-            <aside className="h-fit rounded-corner-lg border border-border-secondary bg-surface-secondary-bg p-xl">
-              <h2 className="mb-md text-label font-semibold text-text-primary">
-                Tags
-              </h2>
-              <div className="flex flex-wrap gap-sm">
-                {(book.tags ?? [book.category, "Afrique", "Francophone"]).map(
-                  (tag) => (
+            {book.tags && book.tags.length > 0 && (
+              <aside className="h-fit rounded-corner-lg border border-border-secondary bg-surface-secondary-bg p-xl">
+                <h2 className="mb-md text-label font-semibold text-text-primary">
+                  Tags
+                </h2>
+                <div className="flex flex-wrap gap-sm">
+                  {book.tags.map((tag) => (
                     <span
                       key={tag}
                       className="rounded-corner-full border border-border-secondary bg-surface-bg px-md py-xs text-video-title text-text-secondary"
                     >
                       {tag}
                     </span>
-                  ),
-                )}
-              </div>
-            </aside>
+                  ))}
+                </div>
+              </aside>
+            )}
           </div>
         )}
 
@@ -132,6 +134,7 @@ export function BookDetailTabs({
           <BookReviews
             reviews={reviews}
             isAuthenticated={isAuthenticated}
+            isOwned={isOwned}
             onSubmit={onSubmitReview}
             onToast={onToast}
           />

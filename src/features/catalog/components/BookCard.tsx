@@ -31,10 +31,15 @@ export function BookCard({ book, onOpen, onAdd, owned, onRead }: BookCardProps) 
           onError={handleCoverError}
           className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.04]"
         />
-        <div className="absolute left-md top-md z-10">
+        <div className="absolute left-md top-md z-10 flex flex-col items-start gap-xs">
           <span className="inline-flex items-center px-2.5 py-1 rounded-corner-full text-[12px] font-semibold tracking-wide bg-[#100908]/85 text-[#FFF6EB] backdrop-blur-md shadow-md border border-white/20">
             {book.category}
           </span>
+          {book.has_file === false && (
+            <span className="inline-flex items-center px-2 py-0.5 rounded-corner-full text-[11px] font-semibold bg-amber-600 text-white shadow-md">
+              Bientôt disponible
+            </span>
+          )}
         </div>
         <div className="absolute inset-x-md bottom-md translate-y-2 opacity-0 transition-all duration-300 group-hover:translate-y-0 group-hover:opacity-100">
           {owned ? (
@@ -77,6 +82,13 @@ export function BookCard({ book, onOpen, onAdd, owned, onRead }: BookCardProps) 
               <BookOpen className="h-3.5 w-3.5" aria-hidden="true" />
               <span>Lire</span>
             </button>
+          ) : book.has_file === false ? (
+            <span
+              className="text-video-title text-text-tertiary italic"
+              title="Fichier ePub bientôt disponible"
+            >
+              Bientôt dispo
+            </span>
           ) : (
             <button
               type="button"

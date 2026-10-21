@@ -10,6 +10,25 @@ export type DashboardBook = {
   cover: string
   progress?: number
   isNew?: boolean
+  has_file?: boolean
+  reading_status?: "not_started" | "reading" | "finished"
+  progress_percent?: number
+}
+
+export type LibraryStats = {
+  books: number
+  reading: number
+  finished: number
+  not_started: number
+  orders?: number
+}
+
+export type LibraryBookItem = DashboardBook
+
+export type LibraryResponse = {
+  items: LibraryBookItem[]
+  stats?: LibraryStats
+  total?: number
 }
 
 export type DashboardSummary = {

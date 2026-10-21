@@ -149,9 +149,15 @@ export function BookDetailPage({
           <div className="flex flex-col gap-xl">
             <div className="flex flex-col gap-md">
               <div className="flex flex-wrap items-center gap-sm">
-                <span className="rounded-corner-sm bg-[#2e8b57]/14 px-md py-xs text-video-title font-bold text-[#1f6642]">
-                  Disponible
-                </span>
+                {book.has_file === false ? (
+                  <span className="rounded-corner-sm bg-amber-500/15 px-md py-xs text-video-title font-bold text-amber-700">
+                    Bientôt disponible
+                  </span>
+                ) : (
+                  <span className="rounded-corner-sm bg-[#2e8b57]/14 px-md py-xs text-video-title font-bold text-[#1f6642]">
+                    Disponible
+                  </span>
+                )}
                 {book.reviews > 300 && (
                   <span className="rounded-corner-sm bg-brand-tertiary px-md py-xs text-video-title font-bold text-brand-primary">
                     Best-seller
@@ -201,12 +207,26 @@ export function BookDetailPage({
                   Pas encore d'avis
                 </span>
               )}
-              <span aria-hidden="true" className="text-border-primary">
-                |
-              </span>
-              <span>
-                {book.pages} pages · {book.year}
-              </span>
+              {(Boolean(book.pages && book.pages > 0) ||
+                Boolean(book.year && book.year > 0)) && (
+                <>
+                  <span aria-hidden="true" className="text-border-primary">
+                    |
+                  </span>
+                  <span>
+                    {book.pages && book.pages > 0
+                      ? `${book.pages} pages`
+                      : null}
+                    {book.pages &&
+                    book.pages > 0 &&
+                    book.year &&
+                    book.year > 0
+                      ? " · "
+                      : null}
+                    {book.year && book.year > 0 ? `${book.year}` : null}
+                  </span>
+                </>
+              )}
             </div>
 
             <BookPurchasePanel
@@ -236,9 +256,6 @@ export function BookDetailPage({
                 {book.authorBio}
               </p>
             )}
-            <p className="text-label-sm text-text-tertiary">
-              {formatPrice(book.price)} · Prix TTC en FCFA
-            </p>
           </div>
         </section>
 
@@ -248,6 +265,7 @@ export function BookDetailPage({
             activeTab={activeTab}
             reviews={reviews}
             isAuthenticated={isAuthenticated}
+            isOwned={isOwned}
             relatedBooks={relatedBooks}
             ownedBookIds={ownedBookIds}
             onTabChange={setActiveTab}

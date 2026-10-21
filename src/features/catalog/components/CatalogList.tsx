@@ -79,6 +79,10 @@ export function CatalogList({ books, onOpen, onAdd, ownedBookIds, onRead }: Cata
                   >
                     Lire
                   </Button>
+                ) : book.has_file === false ? (
+                  <span className="inline-flex items-center rounded-corner-full bg-amber-100 px-md py-xs text-video-title font-semibold text-amber-900">
+                    Bientôt disponible
+                  </span>
                 ) : (
                   <Button
                     variant="primary"
