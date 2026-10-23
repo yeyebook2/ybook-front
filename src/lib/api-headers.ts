@@ -3,8 +3,8 @@ import { getPublicApiBaseUrl } from "@/lib/runtime-env"
 /**
  * Détecte si une URL cible correspond à un tunnel de développement ngrok.
  */
-export function isNgrokTunnelUrl(url?: string): boolean {
-  if (!url) return false
+export function isNgrokTunnelUrl(url?: unknown): boolean {
+  if (!url || typeof url !== "string") return false
   return (
     url.includes("ngrok-free.dev") ||
     url.includes("ngrok.io") ||

@@ -62,13 +62,14 @@ export function CatalogFilters({
             >
               <input
                 type="checkbox"
-                checked={filters.categories.includes(category.value)}
+                checked={Boolean(Array.isArray(filters?.categories) && filters.categories.includes(category.value))}
                 onChange={() => {
-                  const categories = filters.categories.includes(category.value)
-                    ? filters.categories.filter(
+                  const currentCategories = Array.isArray(filters?.categories) ? filters.categories : []
+                  const categories = currentCategories.includes(category.value)
+                    ? currentCategories.filter(
                         (value) => value !== category.value,
                       )
-                    : [...filters.categories, category.value]
+                    : [...currentCategories, category.value]
                   onChange({ categories, page: 1 })
                 }}
                 className="h-4 w-4 rounded-corner-sm accent-[#e04070]"

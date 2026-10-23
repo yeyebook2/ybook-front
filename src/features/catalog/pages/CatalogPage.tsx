@@ -128,7 +128,7 @@ export function CatalogPage({
             <>
               <span aria-hidden="true">/</span>
               <span className="font-medium text-text-primary">
-                {filters.categories.join(", ")}
+                {filters?.categories?.join(", ")}
               </span>
             </>
           )}

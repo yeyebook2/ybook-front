@@ -145,7 +145,7 @@ async function loadProductionDashboard(
 
   const userOrders = ordersResponse.items ?? ordersResponse.orders ?? []
   const commandes = userOrders.filter((o: UserOrder) =>
-    ["paid", "completed"].includes(o.status),
+    Boolean(o?.status && ["paid", "completed"].includes(o.status)),
   ).length
 
   const achetes = libraryData.stats?.books ?? libraryData.total ?? libraryBooks.length

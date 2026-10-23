@@ -1076,7 +1076,7 @@ export default function App({
     const map = new Map<string, Book>()
     // 1. D'abord les métadonnées du catalogue général pour les livres possédés
     for (const b of books) {
-      if (library.includes(b.id)) {
+      if (Array.isArray(library) && library.includes(b.id)) {
         map.set(b.id, b)
       }
     }
@@ -1094,14 +1094,14 @@ export default function App({
     return Array.from(map.values())
   }, [purchasedBooks, books, library])
   const ownsSelected = selectedBook
-    ? library.includes(selectedBook.id)
+    ? (Array.isArray(library) && library.includes(selectedBook.id))
     : currentBookSlug
-      ? library.some((id) => {
+      ? (Array.isArray(library) && library.some((id) => {
           const b =
             books.find((cand) => cand.id === id) ||
             purchasedBooks.find((cand) => cand.id === id)
           return b?.slug === currentBookSlug
-        })
+        }))
       : false
 
   const navLinks: NavLink[] = [
@@ -3730,7 +3730,10 @@ function AdminView({
       if (catalogStatusFilter === "draft" && !isDraft) return false
       if (catalogStatusFilter === "archived" && !isArchived) return false
       if (!q) return true
-      return b.title.toLowerCase().includes(q) || b.author.toLowerCase().includes(q)
+      return (
+        Boolean(b.title && b.title.toLowerCase().includes(q)) ||
+        Boolean(b.author && b.author.toLowerCase().includes(q))
+      )
     })
   }, [adminBooks, books, catalogStatusFilter, catalogQuery])
 
@@ -3742,10 +3745,10 @@ function AdminView({
         if (!orderSearch.trim()) return true
         const q = orderSearch.toLowerCase()
         return (
-          o.customer.toLowerCase().includes(q) ||
-          (o.email && o.email.toLowerCase().includes(q)) ||
-          o.phone.toLowerCase().includes(q) ||
-          o.id.toLowerCase().includes(q)
+          Boolean(o.customer && o.customer.toLowerCase().includes(q)) ||
+          Boolean(o.email && o.email.toLowerCase().includes(q)) ||
+          Boolean(o.phone && o.phone.toLowerCase().includes(q)) ||
+          Boolean(o.id && String(o.id).toLowerCase().includes(q))
         )
       })
   }, [apiOrders, orders, orderFilter, orderSearch])

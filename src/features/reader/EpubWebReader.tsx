@@ -403,7 +403,8 @@ export function EpubWebReader({
         } catch {}
 
         const cssCache = new Map<string, string>()
-        async function fetchAndCacheCss(cssUrl: string): Promise<string> {
+        async function fetchAndCacheCss(cssUrl?: any): Promise<string> {
+          if (!cssUrl || typeof cssUrl !== "string") return ""
           if (cssCache.has(cssUrl)) return cssCache.get(cssUrl)!
           try {
             let targetUrl = cssUrl
@@ -426,11 +427,18 @@ export function EpubWebReader({
         }
 
         const customEpubRequest = (
-          url: string,
+          url?: any,
           type?: any,
           _withCredentials?: boolean,
           headers?: Record<string, string>,
         ) => {
+          if (!url || typeof url !== "string") {
+            if (typeof defaultEpubRequest === "function") {
+              return defaultEpubRequest(url, type, _withCredentials, headers)
+            }
+            return Promise.resolve(null)
+          }
+
           // Intercepter com.apple.ibooks.display-options.xml pour éviter 404 & Erreur d'analyse XML dans la console
           if (url.includes("com.apple.ibooks.display-options.xml")) {
             const parser = new DOMParser()
@@ -452,7 +460,13 @@ export function EpubWebReader({
           if (isNgrok) {
             mergedHeaders["ngrok-skip-browser-warning"] = "true"
           }
-          return defaultEpubRequest(targetUrl, type, true, mergedHeaders)
+          if (typeof defaultEpubRequest === "function") {
+            return defaultEpubRequest(targetUrl, type, true, mergedHeaders)
+          }
+          return fetch(targetUrl, {
+            credentials: "include",
+            headers: createApiHeaders(mergedHeaders, { targetUrl }),
+          })
         }
 
         // Options pour epub.js : credentials + header ngrok uniquement si tunnel de développement actif
@@ -716,19 +730,21 @@ export function EpubWebReader({
             if (!rawHref || rawHref.startsWith("data:") || rawHref.startsWith("blob:")) continue
             try {
               let cssUrl = link.href
-              if (isNgrokTunnelUrl(cssUrl) && !cssUrl.includes("ngrok-skip-browser-warning")) {
-                cssUrl += (cssUrl.includes("?") ? "&" : "?") + "ngrok-skip-browser-warning=true"
-              }
-              const res = await fetch(cssUrl, {
-                credentials: "include",
-                headers: createApiHeaders(undefined, { targetUrl: cssUrl }),
-              })
-              if (res.ok) {
-                const cssText = await res.text()
-                const inlineStyle = doc.createElement("style")
-                inlineStyle.textContent = cssText
-                doc.head?.appendChild(inlineStyle)
-                link.remove()
+              if (cssUrl && typeof cssUrl === "string") {
+                if (isNgrokTunnelUrl(cssUrl) && !cssUrl.includes("ngrok-skip-browser-warning")) {
+                  cssUrl += (cssUrl.includes("?") ? "&" : "?") + "ngrok-skip-browser-warning=true"
+                }
+                const res = await fetch(cssUrl, {
+                  credentials: "include",
+                  headers: createApiHeaders(undefined, { targetUrl: cssUrl }),
+                })
+                if (res.ok) {
+                  const cssText = await res.text()
+                  const inlineStyle = doc.createElement("style")
+                  inlineStyle.textContent = cssText
+                  doc.head?.appendChild(inlineStyle)
+                  link.remove()
+                }
               }
             } catch (cssErr) {
               console.warn("[EpubWebReader] Erreur inline CSS:", cssErr)
@@ -740,7 +756,7 @@ export function EpubWebReader({
           for (const img of images) {
             const src = img.getAttribute("src")
             if (!src || src.startsWith("data:") || src.startsWith("blob:")) continue
-            if (isNgrokTunnelUrl(img.src) && !img.src.includes("ngrok-skip-browser-warning")) {
+            if (img.src && typeof img.src === "string" && isNgrokTunnelUrl(img.src) && !img.src.includes("ngrok-skip-browser-warning")) {
               img.src += (img.src.includes("?") ? "&" : "?") + "ngrok-skip-browser-warning=true"
             }
           }
@@ -797,9 +813,9 @@ export function EpubWebReader({
             }
 
             // Trouver le titre du chapitre actuel si présent dans la TOC
-            if (location.start.href && toc.length > 0) {
-              const item = toc.find((t) => location.start.href.includes(t.href))
-              if (item) setCurrentChapterTitle(item.label)
+            if (location?.start?.href && Array.isArray(toc) && toc.length > 0) {
+              const item = toc.find((t) => t?.href && location.start.href.includes(t.href))
+              if (item?.label) setCurrentChapterTitle(item.label)
             }
           }
 
