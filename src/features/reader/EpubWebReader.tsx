@@ -20,7 +20,7 @@ import {
 } from "lucide-react"
 import { Button } from "@figma/astraui"
 import { getPublicApiBaseUrl } from "@/lib/runtime-env"
-import { createApiHeaders } from "@/lib/api-headers"
+import { createApiHeaders, isNgrokTunnelUrl } from "@/lib/api-headers"
 import type { Book } from "@/features/catalog/types"
 import type { AuthUser } from "@/features/auth/types"
 import {
@@ -164,8 +164,12 @@ export function EpubWebReader({
   const [fontSize, setFontSize] = useState<number>(20)
   const [lineHeight, setLineHeight] = useState<number>(1.75)
 
-  // Throttling de la sauvegarde de progression
+  // Throttling de la sauvegarde de progression et synchronisation
   const lastSavedRef = useRef<{ cfi: string; time: number }>({ cfi: "", time: 0 })
+  const locationsReadyRef = useRef<boolean>(false)
+  const isInitialRelocateRef = useRef<boolean>(true)
+  const initialSavedPercentRef = useRef<number | null>(null)
+  const initialSavedCfiRef = useRef<string | null>(null)
 
   const themeColors = THEME_CONFIG[theme]
 
@@ -265,6 +269,26 @@ export function EpubWebReader({
   // Envoi throttlé de la progression
   const throttledSaveProgress = useCallback(
     (cfi: string, percent: number) => {
+      // 1. N'envoie rien tant que book.locations.generate() n'est pas terminé
+      if (!locationsReadyRef.current) {
+        return
+      }
+
+      // 2. Ignore le tout premier relocated, qui correspond au chargement de la position sauvegardée
+      if (isInitialRelocateRef.current) {
+        isInitialRelocateRef.current = false
+        return
+      }
+
+      // 3. Sécurité anti-écrasement : ne jamais envoyer percent: 0 si le livre a une progression positive enregistrée
+      if (
+        percent === 0 &&
+        initialSavedPercentRef.current !== null &&
+        initialSavedPercentRef.current > 0
+      ) {
+        return
+      }
+
       const now = Date.now()
       // Enregistrement au plus toutes les 3 secondes si le CFI change
       if (lastSavedRef.current.cfi !== cfi && now - lastSavedRef.current.time > 3000) {
@@ -341,6 +365,10 @@ export function EpubWebReader({
       setLoading(true)
       setErrorType(null)
       setErrorMessage(null)
+      locationsReadyRef.current = false
+      isInitialRelocateRef.current = true
+      initialSavedPercentRef.current = null
+      initialSavedCfiRef.current = null
 
       try {
         setLoadingStatus("Initialisation du lecteur ePub...")
@@ -353,8 +381,11 @@ export function EpubWebReader({
           const progressRes = await getBookReadingProgress(book.id)
           if (progressRes.cfi) {
             savedCfi = progressRes.cfi
+            initialSavedCfiRef.current = progressRes.cfi
+            lastSavedRef.current = { cfi: progressRes.cfi, time: Date.now() }
           }
           if (progressRes.percent !== undefined) {
+            initialSavedPercentRef.current = progressRes.percent
             setProgressPercent(progressRes.percent)
           }
         } catch {}
@@ -376,12 +407,12 @@ export function EpubWebReader({
           if (cssCache.has(cssUrl)) return cssCache.get(cssUrl)!
           try {
             let targetUrl = cssUrl
-            if (targetUrl.includes("ngrok-free.dev") && !targetUrl.includes("ngrok-skip-browser-warning")) {
+            if (isNgrokTunnelUrl(targetUrl) && !targetUrl.includes("ngrok-skip-browser-warning")) {
               targetUrl += (targetUrl.includes("?") ? "&" : "?") + "ngrok-skip-browser-warning=true"
             }
             const res = await fetch(targetUrl, {
               credentials: "include",
-              headers: createApiHeaders(),
+              headers: createApiHeaders(undefined, { targetUrl }),
             })
             if (res.ok) {
               const text = await res.text()
@@ -411,23 +442,25 @@ export function EpubWebReader({
           }
 
           let targetUrl = url
-          if (targetUrl.includes("ngrok-free.dev") && !targetUrl.includes("ngrok-skip-browser-warning")) {
+          if (isNgrokTunnelUrl(targetUrl) && !targetUrl.includes("ngrok-skip-browser-warning")) {
             targetUrl += (targetUrl.includes("?") ? "&" : "?") + "ngrok-skip-browser-warning=true"
           }
+          const isNgrok = isNgrokTunnelUrl(targetUrl)
           const mergedHeaders: Record<string, string> = {
             ...(headers || {}),
-            "ngrok-skip-browser-warning": "true",
+          }
+          if (isNgrok) {
+            mergedHeaders["ngrok-skip-browser-warning"] = "true"
           }
           return defaultEpubRequest(targetUrl, type, true, mergedHeaders)
         }
 
-        // Options requises pour epub.js : credentials + header ngrok pour contourner l'interstitiel
+        // Options pour epub.js : credentials + header ngrok uniquement si tunnel de développement actif
+        const isFilesNgrok = isNgrokTunnelUrl(filesUrl)
         const epubStreamOptions = {
           requestMethod: customEpubRequest,
           requestCredentials: true,
-          requestHeaders: {
-            "ngrok-skip-browser-warning": "true",
-          },
+          requestHeaders: isFilesNgrok ? { "ngrok-skip-browser-warning": "true" } : {},
         }
 
         try {
@@ -489,7 +522,7 @@ export function EpubWebReader({
           try {
             response = await fetch(epubUrl, {
               credentials: "include",
-              headers: createApiHeaders(),
+              headers: createApiHeaders(undefined, { targetUrl: epubUrl }),
               signal: controller.signal,
             })
           } catch (fetchErr: any) {
@@ -603,7 +636,7 @@ export function EpubWebReader({
             // 4. Réécrire les balises <img> relatives avec l'URL absolue + bypass ngrok
             modified = modified.replace(/<img([^>]+)src=["\x27]([^"\x27]+)["\x27]([^>]*)>/gi, (match, p1, src, p2) => {
               if (!src.startsWith("http") && !src.startsWith("data:") && !src.startsWith("blob:") && baseUrl) {
-                const fullImgUrl = `${baseUrl}${src}${baseUrl.includes("ngrok-free.dev") ? (baseUrl.includes("?") ? "&" : "?") + "ngrok-skip-browser-warning=true" : ""}`
+                const fullImgUrl = `${baseUrl}${src}${isNgrokTunnelUrl(baseUrl) ? (baseUrl.includes("?") ? "&" : "?") + "ngrok-skip-browser-warning=true" : ""}`
                 return `<img${p1}src="${fullImgUrl}"${p2}>`
               }
               return match
@@ -683,12 +716,12 @@ export function EpubWebReader({
             if (!rawHref || rawHref.startsWith("data:") || rawHref.startsWith("blob:")) continue
             try {
               let cssUrl = link.href
-              if (cssUrl.includes("ngrok-free.dev") && !cssUrl.includes("ngrok-skip-browser-warning")) {
+              if (isNgrokTunnelUrl(cssUrl) && !cssUrl.includes("ngrok-skip-browser-warning")) {
                 cssUrl += (cssUrl.includes("?") ? "&" : "?") + "ngrok-skip-browser-warning=true"
               }
               const res = await fetch(cssUrl, {
                 credentials: "include",
-                headers: createApiHeaders(),
+                headers: createApiHeaders(undefined, { targetUrl: cssUrl }),
               })
               if (res.ok) {
                 const cssText = await res.text()
@@ -707,7 +740,7 @@ export function EpubWebReader({
           for (const img of images) {
             const src = img.getAttribute("src")
             if (!src || src.startsWith("data:") || src.startsWith("blob:")) continue
-            if (img.src.includes("ngrok-free.dev") && !img.src.includes("ngrok-skip-browser-warning")) {
+            if (isNgrokTunnelUrl(img.src) && !img.src.includes("ngrok-skip-browser-warning")) {
               img.src += (img.src.includes("?") ? "&" : "?") + "ngrok-skip-browser-warning=true"
             }
           }
@@ -743,9 +776,25 @@ export function EpubWebReader({
           if (!isMounted) return
           if (location && location.start) {
             const cfi = location.start.cfi
-            const pct = computeBookProgress(location, bookInstance)
-            setProgressPercent(pct)
-            throttledSaveProgress(cfi, pct)
+
+            // N'envoie rien et ne recalcule pas à 0 tant que locations.generate() n'est pas terminé
+            if (locationsReadyRef.current) {
+              // Ignore le tout premier relocated correspondant au chargement initial
+              if (isInitialRelocateRef.current) {
+                isInitialRelocateRef.current = false
+              } else {
+                const pct = computeBookProgress(location, bookInstance)
+                setProgressPercent(pct)
+                throttledSaveProgress(cfi, pct)
+              }
+            } else {
+              // Chargement initial avant que locations ne soit prêt : ignorer ce premier relocated
+              isInitialRelocateRef.current = false
+              // Préserver le pourcentage initial si connu
+              if (initialSavedPercentRef.current !== null && initialSavedPercentRef.current > 0) {
+                setProgressPercent(initialSavedPercentRef.current)
+              }
+            }
 
             // Trouver le titre du chapitre actuel si présent dans la TOC
             if (location.start.href && toc.length > 0) {
@@ -781,17 +830,6 @@ export function EpubWebReader({
         // Forcer l'application du thème sur le viewer et les iframes dès l'affichage
         applyCurrentTheme(currentThemeRef.current)
 
-        // Calculer immédiatement la progression sur la première vue affichée
-        try {
-          const currentLoc = renditionInstance.currentLocation?.()
-          if (currentLoc) {
-            const initialPct = computeBookProgress(currentLoc, bookInstance)
-            if (initialPct > 0) {
-              setProgressPercent(initialPct)
-            }
-          }
-        } catch {}
-
         // Générer les locations en arrière-plan pour un calcul ultra-précis au CFI
         bookInstance.ready
           .then(() => {
@@ -799,11 +837,16 @@ export function EpubWebReader({
           })
           .then(() => {
             if (!isMounted) return
+            locationsReadyRef.current = true
             try {
               const currentLoc = renditionRef.current?.currentLocation?.()
               if (currentLoc) {
                 const precisePct = computeBookProgress(currentLoc, bookInstance)
-                if (precisePct > 0) {
+                if (
+                  precisePct > 0 ||
+                  initialSavedPercentRef.current === null ||
+                  initialSavedPercentRef.current === 0
+                ) {
                   setProgressPercent(precisePct)
                 }
               }
@@ -811,6 +854,7 @@ export function EpubWebReader({
           })
           .catch((locErr: any) => {
             console.warn("[EpubWebReader] Erreur generation locations (fallback actif):", locErr)
+            locationsReadyRef.current = true
           })
 
         if (isMounted) {

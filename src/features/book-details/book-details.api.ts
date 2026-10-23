@@ -84,31 +84,13 @@ function normalizeDetailBook(payload: BackendBook): BookDetail {
   }
 }
 
+import { apiClient } from "@/lib/api-client"
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  let response: Response
-  try {
-    response = await fetch(`${API_BASE_URL}${API_PREFIX}${path}`, {
-      ...init,
-      credentials: "include",
-      headers: createApiHeaders(init.headers),
-    })
-  } catch (networkErr) {
-    throw handleNetworkOrFetchError(
-      networkErr,
-      "Impossible de charger cette fiche livre. Vérifiez votre connexion internet.",
-    )
-  }
-
-  const payload = (await response.json().catch(() => null)) as T | {
-    detail?: unknown
-    message?: string
-  } | null
-
-  if (!response.ok) {
-    throw parseApiError(payload, response.status, response.headers, "Impossible de charger cette fiche livre.")
-  }
-
-  return payload as T
+  return apiClient<T>(path, {
+    ...init,
+    fallbackErrorMessage: "Impossible de charger cette fiche livre.",
+  })
 }
 
 export async function getBookDetail(

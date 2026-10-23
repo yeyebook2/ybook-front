@@ -32,7 +32,7 @@ type BackendAuthPayload = {
   code?: string
 }
 
-import { createApiHeaders } from "@/lib/api-headers"
+import { apiClient, executeSessionRefresh, setOnSessionExpired } from "@/lib/api-client"
 
 function requireApiBaseUrl(): string {
   if (!API_BASE_URL) throw new Error("L’URL de l’API n’est pas configurée.")
@@ -40,50 +40,7 @@ function requireApiBaseUrl(): string {
 }
 
 async function request<T>(path: string, init: RequestInit): Promise<T> {
-  const url = `${requireApiBaseUrl()}${API_PREFIX}${path}`
-  console.log(`[YéYéBook Auth API] Requête HTTP ${init.method || "GET"} vers: ${url}`)
-  let response: Response
-  try {
-    response = await fetch(url, {
-      ...init,
-      credentials: "include",
-      headers: createApiHeaders(init.headers),
-    })
-  } catch (networkErr) {
-    const error = handleNetworkOrFetchError(
-      networkErr,
-      "Impossible de joindre le serveur. Vérifiez votre connexion internet.",
-    )
-    console.error(`[YéYéBook Auth API] Erreur réseau sur ${path}:`, error)
-    throw error
-  }
-
-  const payload = (await response.json().catch(() => null)) as T | {
-    detail?: unknown
-    message?: string
-    code?: string
-    success?: boolean
-  } | null
-
-  if (!response.ok) {
-    const apiError = parseApiError(
-      payload,
-      response.status,
-      response.headers,
-      "Une erreur est survenue. Veuillez vérifier vos informations et réessayer.",
-    )
-    console.error(`[YéYéBook Auth API] Erreur HTTP ${response.status} sur ${path}:`, {
-      status: response.status,
-      code: apiError.code,
-      retryAfter: apiError.retryAfter,
-      payload,
-      message: apiError.message,
-    })
-    throw apiError
-  }
-
-  console.log(`[YéYéBook Auth API] Réponse HTTP ${response.status} OK sur ${path}:`, payload)
-  return payload as T
+  return apiClient<T>(path, init)
 }
 
 function normalizeUser(
@@ -152,6 +109,12 @@ export function saveCachedUser(user: AuthUser | null): void {
   } catch {}
 }
 
+if (typeof window !== "undefined") {
+  setOnSessionExpired(() => {
+    saveCachedUser(null)
+  })
+}
+
 export async function login(values: LoginFormValues): Promise<AuthApiResponse> {
   console.log("[YéYéBook Auth API] login() appelé avec email:", values.email.trim())
   const payload = await request<BackendAuthPayload>("/auth/login", {
@@ -215,15 +178,11 @@ export async function forgotPassword(email: string): Promise<string> {
 }
 
 export async function refreshSession(): Promise<boolean> {
-  try {
-    await request<{ success?: boolean }>("/auth/refresh", { method: "POST" })
-    return true
-  } catch (err) {
-    if (err instanceof ApiError && (err.code === "SESSION_EXPIRED" || err.status === 401)) {
-      saveCachedUser(null)
-    }
-    return false
+  const ok = await executeSessionRefresh()
+  if (!ok) {
+    saveCachedUser(null)
   }
+  return ok
 }
 
 let inFlightCurrentUserPromise: Promise<AuthUser | null> | null = null

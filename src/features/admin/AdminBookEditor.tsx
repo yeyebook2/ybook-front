@@ -22,6 +22,11 @@ import type { Book } from "@/features/catalog/types"
 import { CATALOG_CATEGORIES } from "@/features/catalog/catalog.constants"
 import { uploadCoverApi, uploadEpubApi } from "./admin.api"
 
+export const SUPPORTED_LANGUAGES = [
+  { code: "fr", label: "Français" },
+  { code: "en", label: "Anglais" },
+]
+
 export interface AdminBookEditorProps {
   book: Book | null
   existingBooks: Book[]
@@ -57,6 +62,7 @@ export function AdminBookEditor({
     price: book ? String(book.price) : "",
     pages: book ? String(book.pages) : "160",
     year: book ? String(book.year) : String(new Date().getFullYear()),
+    language: book?.language ?? "fr",
     cover: book?.cover ?? "",
     description: book?.description ?? "",
     published: book?.published !== false,
@@ -275,6 +281,7 @@ export function AdminBookEditor({
       epub_filename: epubFilename || book?.epub_filename || epubFile?.name || undefined,
       has_file: Boolean(fileUrl || book?.has_file),
       file_size: epubSizeBytes ?? book?.file_size ?? undefined,
+      language: form.language,
       description,
       chapters: book?.chapters ?? [],
       published: form.published,
@@ -460,8 +467,8 @@ export function AdminBookEditor({
                   </p>
                 </div>
 
-                {/* Grille 3 colonnes responsive : Prix, Pages, Année */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-md sm:gap-lg pt-xs">
+                {/* Grille responsive : Prix, Pages, Année, Langue */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-md sm:gap-lg pt-xs">
                   <div>
                     <label
                       htmlFor="book-price-input"
@@ -520,6 +527,27 @@ export function AdminBookEditor({
                       placeholder="2026"
                       className="w-full text-base sm:text-label-sm rounded-corner-md border border-border-secondary bg-surface-bg px-md sm:px-lg py-sm sm:py-md text-text-primary placeholder:text-text-tertiary focus:border-brand-primary focus:outline-none focus:ring-1 focus:ring-brand-primary/20 transition-all tabular-nums min-h-[44px]"
                     />
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor="book-language-select"
+                      className="block text-label-sm font-medium text-text-secondary mb-xs"
+                    >
+                      Langue <span className="text-brand-primary">*</span>
+                    </label>
+                    <select
+                      id="book-language-select"
+                      value={form.language}
+                      onChange={(e) => setField("language", e.target.value)}
+                      className="w-full text-base sm:text-label-sm font-medium rounded-corner-md border border-border-secondary bg-surface-bg px-md sm:px-lg py-sm sm:py-md text-text-primary focus:border-brand-primary focus:outline-none focus:ring-1 focus:ring-brand-primary/20 transition-all min-h-[44px]"
+                    >
+                      {SUPPORTED_LANGUAGES.map((lang) => (
+                        <option key={lang.code} value={lang.code}>
+                          {lang.label} ({lang.code})
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 </div>
               </div>

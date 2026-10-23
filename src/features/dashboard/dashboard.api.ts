@@ -45,30 +45,13 @@ type CollectionResponse<T,> = {
   total?: number
 }
 
-async function request<T>(path: string): Promise<T> {
-  let response: Response
-  try {
-    response = await fetch(`${API_BASE_URL}${API_PREFIX}${path}`, {
-      credentials: "include",
-      headers: createApiHeaders(),
-    })
-  } catch (networkErr) {
-    throw handleNetworkOrFetchError(
-      networkErr,
-      "Impossible de charger votre espace lecteur. Vérifiez votre connexion internet.",
-    )
-  }
+import { apiClient } from "@/lib/api-client"
 
-  const payload = (await response.json().catch(() => null)) as T | {
-    detail?: unknown
-    message?: string
-  } | null
-
-  if (!response.ok) {
-    throw parseApiError(payload, response.status, response.headers, "Impossible de charger votre espace lecteur.")
-  }
-
-  return payload as T
+async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  return apiClient<T>(path, {
+    ...init,
+    fallbackErrorMessage: "Impossible de charger votre espace lecteur. Vérifiez votre connexion internet.",
+  })
 }
 
 function mapBook(book: BackendBook | BackendLibraryItem): DashboardBook {
@@ -78,7 +61,13 @@ function mapBook(book: BackendBook | BackendLibraryItem): DashboardBook {
     typeof rawAuthor === "string"
       ? rawAuthor
       : (rawAuthor?.name ?? nestedBook?.author_name ?? "Auteur YéYéBook")
-  const id = nestedBook?.id ?? ("id" in book ? book.id : book.book_id) ?? 0
+  const id =
+    nestedBook?.id ??
+    ("book_id" in book && book.book_id
+      ? book.book_id
+      : "id" in book
+        ? book.id
+        : 0)
   const progress =
     "progress_percent" in book
       ? book.progress_percent
@@ -96,7 +85,9 @@ function mapBook(book: BackendBook | BackendLibraryItem): DashboardBook {
   const readingStatus =
     "reading_status" in (book as any) && typeof (book as any).reading_status === "string"
       ? (book as any).reading_status
-      : undefined
+      : nestedBook && "reading_status" in (nestedBook as any) && typeof (nestedBook as any).reading_status === "string"
+        ? (nestedBook as any).reading_status
+        : undefined
 
   return {
     id: String(id),
@@ -224,6 +215,8 @@ export async function getLibrary(): Promise<LibraryResponse> {
       const raw = item as any
       const reading_status =
         raw.reading_status ??
+        raw.book?.reading_status ??
+        base.reading_status ??
         (base.progress !== undefined && base.progress >= 100
           ? "finished"
           : base.progress !== undefined && base.progress > 0
@@ -232,6 +225,9 @@ export async function getLibrary(): Promise<LibraryResponse> {
       const progress_percent =
         raw.progress_percent ??
         raw.progress ??
+        raw.book?.progress_percent ??
+        raw.book?.progress ??
+        base.progress_percent ??
         base.progress ??
         0
       const has_file =
@@ -309,10 +305,8 @@ export async function saveBookReadingProgress(
   data: { cfi: string; percent: number },
 ): Promise<void> {
   try {
-    await fetch(`${API_BASE_URL}${API_PREFIX}/library/${bookId}/progress`, {
+    await apiClient(`/library/${bookId}/progress`, {
       method: "PUT",
-      credentials: "include",
-      headers: createApiHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify(data),
     })
   } catch (err) {

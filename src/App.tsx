@@ -60,6 +60,7 @@ import {
 import { SearchInput } from "@/components/ui/SearchInput"
 import { Toast, type ToastVariant } from "@/components/ui/Toast"
 import { ApiError } from "@/lib/api-errors"
+import { useDebounce } from "@/hooks/useDebounce"
 import { createOrderApi, initiatePaymentApi } from "@/features/checkout/checkout.api"
 import {
   AdminBookEditor,
@@ -452,28 +453,7 @@ export default function App({
             const rawBook = book as unknown as { chapters?: Chapter[] }
             return {
               ...book,
-              chapters:
-                rawBook.chapters && rawBook.chapters.length > 0
-                  ? rawBook.chapters
-                  : [
-                      {
-                        title: `Présentation & Extrait — ${book.title}`,
-                        content:
-                        (book.description || "")
-                          .split("\n\n")
-                          .map((p) => p.trim())
-                          .filter(Boolean).length > 0
-                          ? (book.description || "")
-                              .split("\n\n")
-                              .map((p) => p.trim())
-                              .filter(Boolean)
-                          : [
-                              `Bienvenue dans la lecture de « ${book.title} » par ${book.author}.`,
-                              "Cet e-book est disponible dans votre bibliothèque personnelle.",
-                              "Profitez de votre espace de lecture en ligne sur YéYéBook.",
-                            ],
-                    },
-                  ],
+              chapters: (rawBook.chapters && rawBook.chapters.length > 0) ? rawBook.chapters : [],
             }
           }),
         )
@@ -577,28 +557,7 @@ export default function App({
       .then((detail) => {
         if (!active) return
         const b = detail.book
-        const chapters =
-          b.chapters && b.chapters.length > 0
-            ? b.chapters
-            : [
-                {
-                  title: `Présentation & Extrait — ${b.title}`,
-                  content:
-                    (b.description || "")
-                      .split("\n\n")
-                      .map((p) => p.trim())
-                      .filter(Boolean).length > 0
-                      ? (b.description || "")
-                          .split("\n\n")
-                          .map((p) => p.trim())
-                          .filter(Boolean)
-                      : [
-                          `Bienvenue dans la lecture de « ${b.title} » par ${b.author}.`,
-                          "Cet e-book est disponible dans votre bibliothèque personnelle.",
-                          "Profitez de votre espace de lecture en ligne sur YéYéBook.",
-                        ],
-                },
-              ]
+        const chapters = (b.chapters && b.chapters.length > 0) ? b.chapters : []
         const fullBook: Book = {
           id: b.id,
           title: b.title,
@@ -969,6 +928,7 @@ export default function App({
           price: book.price,
           pages: book.pages,
           year: book.year,
+          language: book.language?.trim() || undefined,
           cover: book.cover,
           file_url: book.file_url,
           epub_filename: book.epub_filename,
@@ -983,6 +943,7 @@ export default function App({
           price: book.price,
           pages: book.pages,
           year: book.year,
+          language: book.language?.trim() || undefined,
           cover: book.cover,
           file_url: book.file_url,
           epub_filename: book.epub_filename,
@@ -1113,13 +1074,22 @@ export default function App({
     .slice(0, 10)
   const libraryBooks = useMemo(() => {
     const map = new Map<string, Book>()
-    for (const b of purchasedBooks) {
-      map.set(b.id, b)
-    }
+    // 1. D'abord les métadonnées du catalogue général pour les livres possédés
     for (const b of books) {
       if (library.includes(b.id)) {
         map.set(b.id, b)
       }
+    }
+    // 2. Fusionner et prioriser purchasedBooks (conserve reading_status, progress_percent, has_file de l'utilisateur)
+    for (const b of purchasedBooks) {
+      const catalogBook = map.get(b.id)
+      map.set(b.id, {
+        ...(catalogBook || {}),
+        ...b,
+        reading_status: b.reading_status ?? catalogBook?.reading_status,
+        progress_percent: b.progress_percent ?? catalogBook?.progress_percent,
+        has_file: b.has_file ?? catalogBook?.has_file,
+      })
     }
     return Array.from(map.values())
   }, [purchasedBooks, books, library])
@@ -1545,7 +1515,10 @@ export default function App({
       <EpubWebReader
         book={readerBook}
         currentUser={sessionUser}
-        onClose={() => go("library")}
+        onClose={() => {
+          void refreshLibrary()
+          go("library")
+        }}
         onToast={showToast}
       />
     )
@@ -2484,14 +2457,20 @@ export default function App({
                         </span>
                       </div>
                       {started && (
-                        <div
-                          className="h-1.5 rounded-corner-full bg-brand-tertiary overflow-hidden"
-                          aria-hidden="true"
-                        >
+                        <div className="flex flex-col gap-xs">
+                          <div className="flex items-center justify-between text-[11px] font-medium text-text-tertiary">
+                            <span>{completed ? "Terminé" : `Lu à ${pct} %`}</span>
+                            <span>{completed ? "100%" : `${pct}%`}</span>
+                          </div>
                           <div
-                            className={`h-full ${completed ? "bg-[#2e8b57]" : "bg-brand-primary"}`}
-                            style={{ width: `${completed ? 100 : pct}%` }}
-                          />
+                            className="h-1.5 rounded-corner-full bg-brand-tertiary overflow-hidden"
+                            aria-hidden="true"
+                          >
+                            <div
+                              className={`h-full ${completed ? "bg-[#2e8b57]" : "bg-brand-primary"}`}
+                              style={{ width: `${completed ? 100 : pct}%` }}
+                            />
+                          </div>
                         </div>
                       )}
                       <Button
@@ -2510,7 +2489,7 @@ export default function App({
                         {completed
                           ? "Relire"
                           : started
-                            ? "Reprendre"
+                            ? "Continuer la lecture"
                             : "Commencer la lecture"}
                       </Button>
                     </div>
@@ -2588,7 +2567,7 @@ export default function App({
                               </span>
                             ) : started ? (
                               <span className="text-[11px] font-medium text-brand-primary bg-brand-tertiary px-sm py-0.5 rounded-corner-full">
-                                En cours ({pct}%)
+                                Lu à {pct} %
                               </span>
                             ) : (
                               <span className="text-[11px] font-medium text-text-tertiary bg-surface-secondary-bg px-sm py-0.5 rounded-corner-full">
@@ -2622,7 +2601,7 @@ export default function App({
                                 />
                               </div>
                               <span className="text-[11px] text-text-tertiary shrink-0">
-                                {completed ? "100%" : `${pct}%`}
+                                {completed ? "100%" : `Lu à ${pct} %`}
                               </span>
                             </div>
                           )}
@@ -2646,7 +2625,7 @@ export default function App({
                           {completed
                             ? "Relire"
                             : started
-                              ? "Reprendre"
+                              ? "Continuer la lecture"
                               : "Commencer la lecture"}
                         </Button>
                         <Button
@@ -3543,6 +3522,8 @@ function AdminView({
   const [catalogQuery, setCatalogQuery] = useState("")
   const [orderFilter, setOrderFilter] = useState<"all" | OrderStatus>("all")
   const [orderSearch, setOrderSearch] = useState("")
+  const debouncedCatalogQuery = useDebounce(catalogQuery, 350)
+  const debouncedOrderSearch = useDebounce(orderSearch, 350)
   const [orderPage, setOrderPage] = useState(1)
   const [ordersLoading, setOrdersLoading] = useState(false)
   const [ordersTotal, setOrdersTotal] = useState(0)
@@ -3691,15 +3672,15 @@ function AdminView({
 
   useEffect(() => {
     if (tab === "orders") {
-      void fetchOrders(orderFilter, orderSearch, orderPage)
+      void fetchOrders(orderFilter, debouncedOrderSearch, orderPage)
     }
-  }, [tab, orderFilter, orderSearch, orderPage, fetchOrders])
+  }, [tab, orderFilter, debouncedOrderSearch, orderPage, fetchOrders])
 
   useEffect(() => {
     if (tab === "catalog") {
-      void fetchAdminBooks(catalogStatusFilter, catalogQuery)
+      void fetchAdminBooks(catalogStatusFilter, debouncedCatalogQuery)
     }
-  }, [tab, catalogStatusFilter, catalogQuery, fetchAdminBooks])
+  }, [tab, catalogStatusFilter, debouncedCatalogQuery, fetchAdminBooks])
 
   useEffect(() => {
     if (tab === "reviews") {
@@ -4826,8 +4807,10 @@ function AdminView({
                         const published = book.published !== false
                         const isArchived = (book as any).status === "archived"
                         const hasEpub = Boolean((book as any).has_file || (book as any).epub_filename || (book as any).file_url)
-                        const langCode = (book as any).language || "fr"
-                        const langLabel = LANGUES_MAP[langCode] ?? langCode.toUpperCase()
+                        const langCode = book.language?.trim()
+                        const langLabel = langCode
+                          ? (LANGUES_MAP[langCode.toLowerCase()] ?? langCode.toUpperCase())
+                          : "Non renseignée"
 
                         return (
                           <tr

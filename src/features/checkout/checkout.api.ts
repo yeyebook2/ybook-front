@@ -42,53 +42,13 @@ export type ConfirmPaymentResponse = {
   order_status: string
 }
 
-import { createApiHeaders } from "@/lib/api-headers"
+import { apiClient } from "@/lib/api-client"
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const url = `${API_BASE_URL}${API_PREFIX}${path}`
-  let response: Response
-  try {
-    response = await fetch(url, {
-      ...init,
-      credentials: "include",
-      headers: createApiHeaders(init.headers),
-    })
-  } catch (networkErr) {
-    const error = handleNetworkOrFetchError(
-      networkErr,
-      "Impossible d'initier la commande ou le paiement. Vérifiez votre connexion internet.",
-    )
-    console.error(`[YéYéBook Checkout API] Erreur réseau sur ${path}:`, error)
-    throw error
-  }
-
-  const payload = (await response.json().catch(() => null)) as T | {
-    detail?: string | { message?: string }
-    message?: string
-    code?: string
-    success?: boolean
-  } | null
-
-  if (!response.ok) {
-    const apiError = parseApiError(
-      payload,
-      response.status,
-      response.headers,
-      "Une erreur est survenue lors de l'opération de commande ou de paiement.",
-    )
-    console.error(`[YéYéBook Checkout API] Erreur HTTP ${response.status} sur ${path}:`, {
-      code: apiError.code,
-      status: apiError.status,
-      message: apiError.message,
-    })
-    throw apiError
-  }
-
-  if (!payload) {
-    throw new ApiError("Réponse vide du serveur.")
-  }
-
-  return payload as T
+  return apiClient<T>(path, {
+    ...init,
+    fallbackErrorMessage: "Une erreur est survenue lors de l'opération de commande ou de paiement.",
+  })
 }
 
 export async function createOrderApi(bookIds: string[]): Promise<CreateOrderResponse> {

@@ -16,52 +16,19 @@ import type {
 import { createApiHeaders } from "@/lib/api-headers"
 
 const API_BASE_URL = getPublicApiBaseUrl()
-const API_PREFIX = "/api/v1/admin"
+import { apiClient } from "@/lib/api-client"
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const url = `${API_BASE_URL}${API_PREFIX}${path}`
   const isFormData = typeof FormData !== "undefined" && init.body instanceof FormData
-  let response: Response
-  try {
-    response = await fetch(url, {
-      ...init,
-      credentials: "include",
-      headers: createApiHeaders(
-        {
-          "Cache-Control": "no-cache",
-          ...init.headers,
-        },
-        { isFormData },
-      ),
-    })
-  } catch (networkErr) {
-    throw handleNetworkOrFetchError(
-      networkErr,
-      "Impossible de joindre le serveur d'administration. Vérifiez votre connexion internet.",
-    )
-  }
-
-  const payload = (await response.json().catch(() => null)) as T | {
-    detail?: unknown
-    message?: string
-    code?: string
-    success?: boolean
-  } | null
-
-  if (!response.ok) {
-    throw parseApiError(
-      payload,
-      response.status,
-      response.headers,
-      "Une erreur est survenue lors de l'opération d'administration.",
-    )
-  }
-
-  if (!payload) {
-    throw new Error("Réponse vide du serveur.")
-  }
-
-  return payload as T
+  return apiClient<T>(`/admin${path}`, {
+    ...init,
+    isFormData,
+    headers: {
+      "Cache-Control": "no-cache",
+      ...init.headers,
+    },
+    fallbackErrorMessage: "Une erreur est survenue lors de l'opération d'administration.",
+  })
 }
 
 export async function getAdminStatsApi(): Promise<AdminStats | null> {

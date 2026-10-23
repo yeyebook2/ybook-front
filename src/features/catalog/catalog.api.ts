@@ -1,5 +1,6 @@
 import { handleNetworkOrFetchError, parseApiError } from "@/lib/api-errors"
 import { createApiHeaders } from "@/lib/api-headers"
+import { apiClient } from "@/lib/api-client"
 import { CATALOG_CATEGORIES, CATALOG_LANGUAGES } from "./catalog.constants"
 import { getPublicApiBaseUrl } from "@/lib/runtime-env"
 import type {
@@ -109,28 +110,9 @@ async function requestCatalog(
   params.set("sort_by", filters.sortBy)
   params.set("sort_order", filters.sortOrder)
 
-  let response: Response
-  try {
-    response = await fetch(`${API_BASE_URL}${API_PREFIX}/books?${params}`, {
-      credentials: "include",
-      headers: createApiHeaders(),
-    })
-  } catch (networkErr) {
-    throw handleNetworkOrFetchError(
-      networkErr,
-      "Impossible de charger le catalogue de livres. Vérifiez votre connexion internet.",
-    )
-  }
-
-  const payload = (await response
-    .json()
-    .catch(() => null)) as BackendCatalogResponse | { detail?: unknown; message?: string } | null
-
-  if (!response.ok) {
-    throw parseApiError(payload, response.status, response.headers, "Impossible de charger le catalogue de livres.")
-  }
-
-  const data = payload as BackendCatalogResponse
+  const data = await apiClient<BackendCatalogResponse>(`/books?${params}`, {
+    fallbackErrorMessage: "Impossible de charger le catalogue de livres.",
+  })
   const items = (data.items ?? data.books ?? []).map(mapBackendBook)
   const total = data.total ?? items.length
   const page = data.page ?? filters.page

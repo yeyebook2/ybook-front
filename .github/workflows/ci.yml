@@ -1,0 +1,48 @@
+name: CI Quality Gate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality-gate:
+    name: Typecheck, Security Tests & Production Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "pnpm"
+
+      - name: Install Dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Gate 0 — Production Dependency Security Audit
+        run: pnpm audit --prod --audit-level=high
+
+      - name: Gate 1 — TypeScript Strict Verification
+        run: pnpm typecheck
+
+      - name: Gate 2 — Security & Business Unit Tests
+        run: pnpm test
+
+      - name: Gate 3 — Next.js Production Build
+        run: pnpm build
+        env:
+          NEXT_PUBLIC_API_BASE_URL: "https://api.yeyebook.com"

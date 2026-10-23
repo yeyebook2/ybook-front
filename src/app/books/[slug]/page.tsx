@@ -1,22 +1,24 @@
 import type { Metadata } from "next"
 import { RouteEntry } from "../../route-entry"
 
-export function generateMetadata({
+export async function generateMetadata({
   params,
 }: {
-  params: { slug: string }
-}): Metadata {
+  params: Promise<{ slug: string }>
+}): Promise<Metadata> {
+  const { slug } = await params
   return {
     title: "Fiche livre",
     description: "Découvrez un e-book africain francophone sur YéYéBook.",
-    alternates: { canonical: `/books/${params.slug}` },
+    alternates: { canonical: `/books/${slug}` },
   }
 }
 
-export default function BookDetailRoute({
+export default async function BookDetailRoute({
   params,
 }: {
-  params: { slug: string }
+  params: Promise<{ slug: string }>
 }) {
-  return <RouteEntry view="details" bookSlug={params.slug} />
+  const { slug } = await params
+  return <RouteEntry view="details" bookSlug={slug} />
 }

@@ -81,6 +81,7 @@ export type AdminBookInput = {
   published?: boolean
   file_url?: string
   epub_filename?: string
+  language?: string
 }
 
 export type UploadCoverResponse = {
