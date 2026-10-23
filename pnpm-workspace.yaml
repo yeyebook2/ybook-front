@@ -7,3 +7,5 @@ overrides:
   '@xmldom/xmldom': '0.9.12'
   postcss: '8.5.31'
   source-map-js: '1.2.2'
+patchedDependencies:
+  epubjs: patches/epubjs.patch

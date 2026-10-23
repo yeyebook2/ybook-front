@@ -9,6 +9,9 @@ overrides:
   postcss: 8.5.31
   source-map-js: 1.2.2
 
+patchedDependencies:
+  epubjs: 73b0e4a4a18619be5bb186e59fe1720530fd1a29c426eb2d29c54ad732a2e341
+
 importers:
 
   .:
@@ -18,7 +21,7 @@ importers:
         version: 1.0.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       epubjs:
         specifier: ^0.3.93
-        version: 0.3.93
+        version: 0.3.93(patch_hash=73b0e4a4a18619be5bb186e59fe1720530fd1a29c426eb2d29c54ad732a2e341)
       lucide-react:
         specifier: ^1.31.0
         version: 1.31.0(react@18.3.1)
@@ -1630,7 +1633,7 @@ snapshots:
       graceful-fs: 4.2.11
       tapable: 2.3.2
 
-  epubjs@0.3.93:
+  epubjs@0.3.93(patch_hash=73b0e4a4a18619be5bb186e59fe1720530fd1a29c426eb2d29c54ad732a2e341):
     dependencies:
       '@types/localforage': 0.0.34
       '@xmldom/xmldom': 0.9.12

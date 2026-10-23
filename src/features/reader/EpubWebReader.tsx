@@ -432,10 +432,7 @@ export function EpubWebReader({
           _withCredentials?: boolean,
           headers?: Record<string, string>,
         ) => {
-          if (!url || typeof url !== "string") {
-            if (typeof defaultEpubRequest === "function") {
-              return defaultEpubRequest(url, type, _withCredentials, headers)
-            }
+          if (!url || typeof url !== "string" || !url.trim()) {
             return Promise.resolve(null)
           }
 
@@ -814,7 +811,8 @@ export function EpubWebReader({
 
             // Trouver le titre du chapitre actuel si présent dans la TOC
             if (location?.start?.href && Array.isArray(toc) && toc.length > 0) {
-              const item = toc.find((t) => t?.href && location.start.href.includes(t.href))
+              const startHref = typeof location.start.href === "string" ? location.start.href : ""
+              const item = toc.find((t) => typeof t?.href === "string" && Boolean(startHref) && startHref.includes(t.href))
               if (item?.label) setCurrentChapterTitle(item.label)
             }
           }

@@ -1,0 +1,469 @@
+diff --git a/lib/book.js b/lib/book.js
+index d673f2db16da288267ef61aeb3e1fa52859ab010..5f7a5f5445227a973339b413b9fb42df217233f3 100644
+--- a/lib/book.js
++++ b/lib/book.js
+@@ -367,8 +367,8 @@ class Book {
+ 
+ 
+   resolve(path, absolute) {
+-    if (!path) {
+-      return;
++    if (!path || typeof path !== "string") {
++      return "";
+     }
+ 
+     var resolved = path;
+diff --git a/lib/navigation.js b/lib/navigation.js
+index 091e38415f9a2b8a7b70ed01530aa50d2a2eb7df..1b35a548e066a031147a0626fe229d6c5b941f2b 100644
+--- a/lib/navigation.js
++++ b/lib/navigation.js
+@@ -90,7 +90,7 @@ class Navigation {
+   get(target) {
+     var index;
+ 
+-    if (!target) {
++    if (!target || typeof target !== "string") {
+       return this.toc;
+     }
+ 
+diff --git a/lib/pagelist.js b/lib/pagelist.js
+index 5e44b171e392668c514f6d7f5a3c616ece8a5aaa..f9b9a262583bf1bdc576316dc2f8c9e78ea66307 100644
+--- a/lib/pagelist.js
++++ b/lib/pagelist.js
+@@ -121,10 +121,10 @@ class PageList {
+ 
+   item(item) {
+     var content = (0, _core.qs)(item, "a"),
+-        href = content.getAttribute("href") || "",
+-        text = content.textContent || "",
++        href = (content && content.getAttribute("href")) || "",
++        text = (content && content.textContent) || "",
+         page = parseInt(text),
+-        isCfi = href.indexOf("epubcfi"),
++        isCfi = typeof href === "string" ? href.indexOf("epubcfi") : -1,
+         split,
+         packageUrl,
+         cfi;
+diff --git a/lib/utils/path.js b/lib/utils/path.js
+index e5d1b5ef08d3907a6cbd08bda6c466ea74239ab5..b85ab949869252b0ffe3f2047b4ca73f129658a2 100644
+--- a/lib/utils/path.js
++++ b/lib/utils/path.js
+@@ -20,10 +20,17 @@ class Path {
+   constructor(pathString) {
+     var protocol;
+     var parsed;
++
++    if (!pathString || typeof pathString !== "string") {
++      pathString = "";
++    }
++
+     protocol = pathString.indexOf("://");
+ 
+     if (protocol > -1) {
+-      pathString = new URL(pathString).pathname;
++      try {
++        pathString = new URL(pathString).pathname;
++      } catch (e) {}
+     }
+ 
+     parsed = this.parse(pathString);
+@@ -32,11 +39,11 @@ class Path {
+     if (this.isDirectory(pathString)) {
+       this.directory = pathString;
+     } else {
+-      this.directory = parsed.dir + "/";
++      this.directory = (parsed && parsed.dir ? parsed.dir : "") + "/";
+     }
+ 
+-    this.filename = parsed.base;
+-    this.extension = parsed.ext.slice(1);
++    this.filename = (parsed && parsed.base) || "";
++    this.extension = (parsed && parsed.ext && parsed.ext.length > 0) ? parsed.ext.slice(1) : "";
+   }
+   /**
+    * Parse the path: https://nodejs.org/api/path.html#path_path_parse_path
+@@ -65,7 +72,7 @@ class Path {
+ 
+ 
+   isDirectory(what) {
+-    return what.charAt(what.length - 1) === "/";
++    return Boolean(what && typeof what === "string" && what.charAt(what.length - 1) === "/");
+   }
+   /**
+    * Resolve a path against the directory of the Path
+@@ -77,7 +84,7 @@ class Path {
+ 
+ 
+   resolve(what) {
+-    return _pathWebpack.default.resolve(this.directory, what);
++    return _pathWebpack.default.resolve(this.directory || "/", what || "");
+   }
+   /**
+    * Resolve a path relative to the directory of the Path
+@@ -89,13 +96,16 @@ class Path {
+ 
+ 
+   relative(what) {
+-    var isAbsolute = what && what.indexOf("://") > -1;
++    if (!what || typeof what !== "string") {
++      return "";
++    }
++    var isAbsolute = what.indexOf("://") > -1;
+ 
+     if (isAbsolute) {
+       return what;
+     }
+ 
+-    return _pathWebpack.default.relative(this.directory, what);
++    return _pathWebpack.default.relative(this.directory || "/", what);
+   }
+ 
+   splitPath(filename) {
+diff --git a/lib/utils/replacements.js b/lib/utils/replacements.js
+index 4267b6a3edcad58c926e299e46ccdd65a41bd6d4..441f3d86eaa952e49811e011c88e13e2d20db033 100644
+--- a/lib/utils/replacements.js
++++ b/lib/utils/replacements.js
+@@ -20,12 +20,11 @@ function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { de
+ function replaceBase(doc, section) {
+   var base;
+   var head;
+-  var url = section.url;
+-  var absolute = url.indexOf("://") > -1;
+-
+-  if (!doc) {
++  if (!doc || !section) {
+     return;
+   }
++  var url = section.url || "";
++  var absolute = typeof url === "string" && url.indexOf("://") > -1;
+ 
+   head = (0, _core.qs)(doc, "head");
+   base = (0, _core.qs)(head, "base");
+@@ -36,7 +35,7 @@ function replaceBase(doc, section) {
+   } // Fix for Safari crashing if the url doesn't have an origin
+ 
+ 
+-  if (!absolute && window && window.location) {
++  if (!absolute && typeof window !== "undefined" && window && window.location) {
+     url = window.location.origin + url;
+   }
+ 
+@@ -101,6 +100,10 @@ function replaceLinks(contents, fn) {
+   var replaceLink = function (link) {
+     var href = link.getAttribute("href");
+ 
++    if (!href || typeof href !== "string") {
++      return;
++    }
++
+     if (href.indexOf("mailto:") === 0) {
+       return;
+     }
+diff --git a/lib/utils/request.js b/lib/utils/request.js
+index 6ac692f3a71a24cbf7bf9d49b2bd41f0278e7d13..5356ef58d612b4ac7dc486d830f9412454c0e49d 100644
+--- a/lib/utils/request.js
++++ b/lib/utils/request.js
+@@ -47,7 +47,7 @@ function request(url, type, withCredentials, headers) {
+ 
+ 
+   if (!type) {
+-    type = new _path.default(url).extension;
++    type = (url && typeof url === "string") ? new _path.default(url).extension : "";
+   }
+ 
+   if (type == "blob") {
+diff --git a/lib/utils/url.js b/lib/utils/url.js
+index 5e87fbab5d14822bfe96f31df10927de7dfa1a2a..b389e8ec8d677ef80cc3ee446d438f97e478d574 100644
+--- a/lib/utils/url.js
++++ b/lib/utils/url.js
+@@ -19,6 +19,9 @@ function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { de
+  */
+ class Url {
+   constructor(urlString, baseString) {
++    if (!urlString || typeof urlString !== "string") {
++      urlString = "";
++    }
+     var absolute = urlString.indexOf("://") > -1;
+     var pathname = urlString;
+     var basePath;
+@@ -27,11 +30,10 @@ class Url {
+     this.protocol = "";
+     this.origin = "";
+     this.hash = "";
+-    this.hash = "";
+     this.search = "";
+     this.base = baseString;
+ 
+-    if (!absolute && baseString !== false && typeof baseString !== "string" && window && window.location) {
++    if (!absolute && baseString !== false && typeof baseString !== "string" && typeof window !== "undefined" && window && window.location) {
+       this.base = window.location.href;
+     } // URL Polyfill doesn't throw an error if base is empty
+ 
+@@ -83,6 +85,9 @@ class Url {
+ 
+ 
+   resolve(what) {
++    if (!what || typeof what !== "string") {
++      return "";
++    }
+     var isAbsolute = what.indexOf("://") > -1;
+     var fullpath;
+ 
+@@ -90,8 +95,8 @@ class Url {
+       return what;
+     }
+ 
+-    fullpath = _pathWebpack.default.resolve(this.directory, what);
+-    return this.origin + fullpath;
++    fullpath = _pathWebpack.default.resolve(this.directory || "/", what);
++    return (this.origin || "") + fullpath;
+   }
+   /**
+    * Resolve a path relative to the url
+@@ -101,7 +106,10 @@ class Url {
+ 
+ 
+   relative(what) {
+-    return _pathWebpack.default.relative(what, this.directory);
++    if (!what || typeof what !== "string") {
++      return "";
++    }
++    return _pathWebpack.default.relative(what, this.directory || "/");
+   }
+   /**
+    * @returns {string}
+diff --git a/src/book.js b/src/book.js
+index fb66e54b1f2d8a8cbdb407d5215100e066db4b9b..f5adcba4f3fa2be70ccf20c4d3d3f5ea73d9b1f4 100644
+--- a/src/book.js
++++ b/src/book.js
+@@ -359,8 +359,8 @@ class Book {
+ 	 * @return {string}          the resolved path string
+ 	 */
+ 	resolve(path, absolute) {
+-		if (!path) {
+-			return;
++		if (!path || typeof path !== "string") {
++			return "";
+ 		}
+ 		var resolved = path;
+ 		var isAbsolute = (path.indexOf("://") > -1);
+diff --git a/src/navigation.js b/src/navigation.js
+index 801598bdc7bfb8626e0e699bb2405c338a1c183c..2411b2768dc92ea31e4dea5a024c8c0059719afc 100644
+--- a/src/navigation.js
++++ b/src/navigation.js
+@@ -83,7 +83,7 @@ class Navigation {
+ 	get(target) {
+ 		var index;
+ 
+-		if(!target) {
++		if(!target || typeof target !== "string") {
+ 			return this.toc;
+ 		}
+ 
+diff --git a/src/pagelist.js b/src/pagelist.js
+index 6de82f67086da3ec44dcaea2e652f164f5c4ef15..050bf5bbe38a82e6d6a6fb41f22976a248b3a3f5 100644
+--- a/src/pagelist.js
++++ b/src/pagelist.js
+@@ -122,10 +122,10 @@ class PageList {
+ 	 */
+ 	item(item){
+ 		var content = qs(item, "a"),
+-				href = content.getAttribute("href") || "",
+-				text = content.textContent || "",
++				href = (content && content.getAttribute("href")) || "",
++				text = (content && content.textContent) || "",
+ 				page = parseInt(text),
+-				isCfi = href.indexOf("epubcfi"),
++				isCfi = typeof href === "string" ? href.indexOf("epubcfi") : -1,
+ 				split,
+ 				packageUrl,
+ 				cfi;
+diff --git a/src/utils/path.js b/src/utils/path.js
+index 6a060cb146438f69df053f8084cd4e74043bbaec..cd34761c9f5588db628db33ffb21a74530ad4162 100644
+--- a/src/utils/path.js
++++ b/src/utils/path.js
+@@ -12,9 +12,15 @@ class Path {
+ 		var protocol;
+ 		var parsed;
+ 
++		if (!pathString || typeof pathString !== "string") {
++			pathString = "";
++		}
++
+ 		protocol = pathString.indexOf("://");
+ 		if (protocol > -1) {
+-			pathString = new URL(pathString).pathname;
++			try {
++				pathString = new URL(pathString).pathname;
++			} catch (e) {}
+ 		}
+ 
+ 		parsed = this.parse(pathString);
+@@ -24,11 +30,11 @@ class Path {
+ 		if (this.isDirectory(pathString)) {
+ 			this.directory = pathString;
+ 		} else {
+-			this.directory = parsed.dir + "/";
++			this.directory = (parsed && parsed.dir ? parsed.dir : "") + "/";
+ 		}
+ 
+-		this.filename = parsed.base;
+-		this.extension = parsed.ext.slice(1);
++		this.filename = (parsed && parsed.base) || "";
++		this.extension = (parsed && parsed.ext && parsed.ext.length > 0) ? parsed.ext.slice(1) : "";
+ 
+ 	}
+ 
+@@ -55,7 +61,7 @@ class Path {
+ 	 * @returns {boolean}
+ 	 */
+ 	isDirectory (what) {
+-		return (what.charAt(what.length-1) === "/");
++		return Boolean(what && typeof what === "string" && what.charAt(what.length-1) === "/");
+ 	}
+ 
+ 	/**
+@@ -66,7 +72,7 @@ class Path {
+ 	 * @returns {string} resolved
+ 	 */
+ 	resolve (what) {
+-		return path.resolve(this.directory, what);
++		return path.resolve(this.directory || "/", what || "");
+ 	}
+ 
+ 	/**
+@@ -77,13 +83,16 @@ class Path {
+ 	 * @returns {string} relative
+ 	 */
+ 	relative (what) {
+-		var isAbsolute = what && (what.indexOf("://") > -1);
++		if (!what || typeof what !== "string") {
++			return "";
++		}
++		var isAbsolute = (what.indexOf("://") > -1);
+ 
+ 		if (isAbsolute) {
+ 			return what;
+ 		}
+ 
+-		return path.relative(this.directory, what);
++		return path.relative(this.directory || "/", what);
+ 	}
+ 
+ 	splitPath(filename) {
+diff --git a/src/utils/replacements.js b/src/utils/replacements.js
+index a2710880d8ccfd0805c8e99b32180345b9bba4f8..32f833a04353ee0b1d941580c239fd8c4f9011b6 100644
+--- a/src/utils/replacements.js
++++ b/src/utils/replacements.js
+@@ -5,12 +5,11 @@ import Path from "./path";
+ export function replaceBase(doc, section){
+ 	var base;
+ 	var head;
+-	var url = section.url;
+-	var absolute = (url.indexOf("://") > -1);
+-
+-	if(!doc){
++	if(!doc || !section){
+ 		return;
+ 	}
++	var url = section.url || "";
++	var absolute = (typeof url === "string" && url.indexOf("://") > -1);
+ 
+ 	head = qs(doc, "head");
+ 	base = qs(head, "base");
+@@ -21,7 +20,7 @@ export function replaceBase(doc, section){
+ 	}
+ 
+ 	// Fix for Safari crashing if the url doesn't have an origin
+-	if (!absolute && window && window.location) {
++	if (!absolute && typeof window !== "undefined" && window && window.location) {
+ 		url = window.location.origin + url;
+ 	}
+ 
+@@ -85,6 +84,10 @@ export function replaceLinks(contents, fn) {
+ 	var replaceLink = function(link){
+ 		var href = link.getAttribute("href");
+ 
++		if(!href || typeof href !== "string") {
++			return;
++		}
++
+ 		if(href.indexOf("mailto:") === 0){
+ 			return;
+ 		}
+diff --git a/src/utils/request.js b/src/utils/request.js
+index 0de3b86cf6f8feb626473c4dd653701dce09371d..2c55ea961b022b81e32b78c677b395edcb1b7f69 100644
+--- a/src/utils/request.js
++++ b/src/utils/request.js
+@@ -41,7 +41,7 @@ function request(url, type, withCredentials, headers) {
+ 
+ 	// If type isn"t set, determine it from the file extension
+ 	if(!type) {
+-		type = new Path(url).extension;
++		type = (url && typeof url === "string") ? new Path(url).extension : "";
+ 	}
+ 
+ 	if(type == "blob"){
+diff --git a/src/utils/url.js b/src/utils/url.js
+index 3cc8c04dca3c7ce146850a8aba33b486e9dde82a..a4e9c5e87ea9431c4165e2ec0d56a79a91027419 100644
+--- a/src/utils/url.js
++++ b/src/utils/url.js
+@@ -9,6 +9,9 @@ import path from "path-webpack";
+  */
+ class Url {
+ 	constructor(urlString, baseString) {
++		if (!urlString || typeof urlString !== "string") {
++			urlString = "";
++		}
+ 		var absolute = (urlString.indexOf("://") > -1);
+ 		var pathname = urlString;
+ 		var basePath;
+@@ -18,14 +21,13 @@ class Url {
+ 		this.protocol = "";
+ 		this.origin = "";
+ 		this.hash = "";
+-		this.hash = "";
+ 		this.search = "";
+ 		this.base = baseString;
+ 
+ 		if (!absolute &&
+ 				baseString !== false &&
+ 				typeof(baseString) !== "string" &&
+-				window && window.location) {
++				typeof window !== "undefined" && window && window.location) {
+ 			this.base = window.location.href;
+ 		}
+ 
+@@ -77,6 +79,9 @@ class Url {
+ 	 * @returns {string} url
+ 	 */
+ 	resolve (what) {
++		if (!what || typeof what !== "string") {
++			return "";
++		}
+ 		var isAbsolute = (what.indexOf("://") > -1);
+ 		var fullpath;
+ 
+@@ -84,8 +89,8 @@ class Url {
+ 			return what;
+ 		}
+ 
+-		fullpath = path.resolve(this.directory, what);
+-		return this.origin + fullpath;
++		fullpath = path.resolve(this.directory || "/", what);
++		return (this.origin || "") + fullpath;
+ 	}
+ 
+ 	/**
+@@ -94,7 +99,10 @@ class Url {
+ 	 * @returns {string} path
+ 	 */
+ 	relative (what) {
+-		return path.relative(what, this.directory);
++		if (!what || typeof what !== "string") {
++			return "";
++		}
++		return path.relative(what, this.directory || "/");
+ 	}
+ 
+ 	/**
