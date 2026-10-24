@@ -10,7 +10,7 @@ overrides:
   source-map-js: 1.2.2
 
 patchedDependencies:
-  epubjs: 73b0e4a4a18619be5bb186e59fe1720530fd1a29c426eb2d29c54ad732a2e341
+  epubjs@0.3.93: 73b0e4a4a18619be5bb186e59fe1720530fd1a29c426eb2d29c54ad732a2e341
 
 importers:
 
